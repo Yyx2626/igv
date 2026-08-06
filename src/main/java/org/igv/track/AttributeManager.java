@@ -38,6 +38,15 @@ import java.util.*;
 public class AttributeManager implements AttributeSupplier {
 
     public static final String GROUP_AUTOSCALE = "AUTOSCALE GROUP";
+
+    /**
+     * Attribute name for the "Pair Tracks" column (see {@link TrackPairing}). Special-cased
+     * in {@link AbstractTrack#getAttributeValue}/{@code setAttributeValue}/{@code renderAttributes}
+     * to read/write {@code pairId} directly, the same way {@link #GROUP_AUTOSCALE} bypasses
+     * the row-keyed attribute table (which is keyed by sample/track *name* and would
+     * otherwise incorrectly group same-named tracks together).
+     */
+    public static final String PAIR_GROUP = "PAIR GROUP";
     private static Logger log = LogManager.getLogger(AttributeManager.class);
 
     private static AttributeManager singleton;

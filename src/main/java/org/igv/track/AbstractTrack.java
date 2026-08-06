@@ -81,6 +81,10 @@ public abstract class AbstractTrack implements Track {
 
     String autoscaleGroup;
 
+    private String pairId;
+    private PairRole pairRole;
+    private Set<Integer> trackGroups = new LinkedHashSet<>();
+
     protected Color defaultColor;
     protected Color color = null;
     protected Color altColor = null;
@@ -277,7 +281,13 @@ public abstract class AbstractTrack implements Track {
                     var x = trackRectangle.x;
                     for (var name : attributeNames) {
                         final var key = name.toUpperCase();
-                        var attributeValue = attributeManager.getAttribute(s, key);
+                        // PAIR_GROUP is read from this track's own pairId field, not the
+                        // generic row-keyed attribute table (keyed by getSample(), which
+                        // falls back to the track *name* - so any two tracks sharing a
+                        // name would otherwise incorrectly appear paired together).
+                        var attributeValue = key.equals(AttributeManager.PAIR_GROUP)
+                                ? pairId
+                                : attributeManager.getAttribute(s, key);
                         if (attributeValue != null) {
                             var rect = new Rectangle(x, y, AttributeHeaderPanel.ATTRIBUTE_COLUMN_WIDTH, sampleHeight - 1);
                             graphics.setColor(AttributeManager.getInstance().getColor(key, attributeValue));
@@ -344,6 +354,8 @@ public abstract class AbstractTrack implements Track {
         String key = name.toUpperCase();
         if (key.equals(AttributeManager.GROUP_AUTOSCALE)) {
             autoscaleGroup = value;
+        } else if (key.equals(AttributeManager.PAIR_GROUP)) {
+            pairId = value;
         } else {
             attributes.put(key, value);
         }
@@ -355,6 +367,8 @@ public abstract class AbstractTrack implements Track {
         String key = name.toUpperCase();
         if (key.equals(AttributeManager.GROUP_AUTOSCALE)) {
             autoscaleGroup = null;
+        } else if (key.equals(AttributeManager.PAIR_GROUP)) {
+            pairId = null;
         } else {
             attributes.remove(key);
         }
@@ -383,6 +397,8 @@ public abstract class AbstractTrack implements Track {
                 value = getFromAttributeManager(key);
                 autoscaleGroup = value;
             }
+        } else if (key.equals(AttributeManager.PAIR_GROUP)) {
+            value = pairId;
         } else {
             value = attributes.get(key);
             if (value == null) {
@@ -390,6 +406,46 @@ public abstract class AbstractTrack implements Track {
             }
         }
         return value;
+    }
+
+    @Override
+    public String getPairId() {
+        return pairId;
+    }
+
+    @Override
+    public void setPairId(String pairId) {
+        this.pairId = pairId;
+    }
+
+    @Override
+    public PairRole getPairRole() {
+        return pairRole;
+    }
+
+    @Override
+    public void setPairRole(PairRole pairRole) {
+        this.pairRole = pairRole;
+    }
+
+    @Override
+    public Set<Integer> getTrackGroups() {
+        return trackGroups;
+    }
+
+    @Override
+    public void setTrackGroups(Set<Integer> groups) {
+        this.trackGroups = groups == null ? new LinkedHashSet<>() : new LinkedHashSet<>(groups);
+    }
+
+    @Override
+    public void addToTrackGroup(int groupNumber) {
+        trackGroups.add(groupNumber);
+    }
+
+    @Override
+    public void removeFromTrackGroup(int groupNumber) {
+        trackGroups.remove(groupNumber);
     }
 
     private String getFromAttributeManager(String key) {
@@ -1309,6 +1365,20 @@ public abstract class AbstractTrack implements Track {
             jsonObject.put("sampleFilter", sampleFilter.toJson());
         }
 
+        if (pairId != null) {
+            jsonObject.put("pairId", pairId);
+            jsonObject.put("pairRole", pairRole.toString());
+        }
+
+        if (!trackGroups.isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            for (Integer g : trackGroups) {
+                if (sb.length() > 0) sb.append(",");
+                sb.append(g);
+            }
+            jsonObject.put("trackGroups", sb.toString());
+        }
+
     }
 
 
@@ -1468,6 +1538,31 @@ public abstract class AbstractTrack implements Track {
             }
 
             resetSampleGroups();
+        }
+
+        if (jsonObject.has("pairId")) {
+            this.pairId = jsonObject.getString("pairId");
+            if (jsonObject.has("pairRole")) {
+                try {
+                    this.pairRole = PairRole.valueOf(jsonObject.getString("pairRole"));
+                } catch (IllegalArgumentException e) {
+                    log.error("Unrecognized pairRole: " + jsonObject.getString("pairRole"));
+                }
+            }
+        }
+
+        if (jsonObject.has("trackGroups")) {
+            String s = jsonObject.getString("trackGroups");
+            this.trackGroups = new LinkedHashSet<>();
+            if (!s.isEmpty()) {
+                for (String part : s.split(",")) {
+                    try {
+                        this.trackGroups.add(Integer.parseInt(part.trim()));
+                    } catch (NumberFormatException e) {
+                        log.error("Unrecognized trackGroups entry: " + part);
+                    }
+                }
+            }
         }
     }
 

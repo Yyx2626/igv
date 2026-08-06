@@ -13,6 +13,7 @@ public enum TrackType {
     variant,
     sequence,
     merged,
+    averageErrorBar,
     mut,
     gwas,
     interact,

@@ -7,3 +7,4 @@
 .java-version
 /test/batch/snapshots/
 /.claude/
+.DS_Store

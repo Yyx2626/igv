@@ -89,7 +89,6 @@ public class AttributePanel extends TrackPanelComponent implements Paintable {
         }
     }
 
-
     @Override
     public int getSnapshotHeight(boolean batch) {
         return getHeight();

@@ -197,28 +197,42 @@ public class TrackNamePanel extends TrackPanelComponent implements Paintable {
         /**
          * Mouse was clicked.  Toggle selection of the associated track (revealing the
          * selection checkboxes if they are hidden), then delegate the click to the track.
-         * Clicks in the left margin, adjacent to the drag handle, are ignored.
+         * Shift-click selects the whole range between the last plain-clicked track and
+         * this one (mirroring Explorer/Finder/Gmail), matching the checkbox's own
+         * shift-click behavior in {@link TrackSelectionPanel}. Clicks in the left margin,
+         * adjacent to the drag handle, are ignored.
+         * <p>
+         * Right-clicks must never affect selection - only pop up the context menu. In
+         * principle the superclass's own isPopupTrigger() check already prevents a
+         * popup-triggering release from reaching here, but on macOS isPopupTrigger() isn't
+         * always reported consistently between mousePressed and mouseReleased for the same
+         * gesture, which could leave a stale "mouseDown" in the superclass and let this
+         * fire anyway. Checking the mouse button directly is more robust than relying on
+         * that flag.
          *
          * @param e
          */
         @Override
         public void igvMouseClicked(final MouseEvent e) {
-            if (e.getX() < LEFT_CLICK_MARGIN) {
+            if (!SwingUtilities.isLeftMouseButton(e) || e.getX() < LEFT_CLICK_MARGIN) {
                 return;
             }
-            toggleTrackSelection();
+            handleNameClickSelection(e.isShiftDown());
             getTrack().handleNameClick(e);
         }
 
     }
 
     /**
-     * Toggle the selection state of the track associated with this name panel.
-     * Selection state is held by the checkbox in the {@link TrackSelectionPanel}, not by the
-     * track itself.  If the selection checkboxes are not currently visible, reveal them first
-     * (revealing leaves the checkbox unchecked, so the toggle then selects the track).
+     * Drives track selection from a name-panel click: a plain click toggles this track's
+     * checkbox and becomes the new range-select anchor; a shift-click (with an existing
+     * anchor) instead selects every track between the anchor and this one, leaving the
+     * anchor unchanged so further shift-clicks keep extending from the same start point.
+     * Selection state is held by the checkbox in the {@link TrackSelectionPanel}, not by
+     * the track itself. If the selection checkboxes are not currently visible, reveal them
+     * first (revealing leaves the checkbox unchecked, so a plain click then selects it).
      */
-    private void toggleTrackSelection() {
+    private void handleNameClickSelection(boolean shiftDown) {
         TrackPanelScrollPane scrollPane = getTrackPanel().getScrollPane();
         if (scrollPane == null) {
             return;
@@ -227,8 +241,15 @@ public class TrackNamePanel extends TrackPanelComponent implements Paintable {
             IGV.getInstance().getMainPanel().setSelectionPanelsVisible(true);
         }
         TrackSelectionPanel selectionPanel = scrollPane.getSelectionPanel();
-        if (selectionPanel != null) {
+        if (selectionPanel == null) {
+            return;
+        }
+        Track track = getTrack();
+        if (shiftDown && TrackSelectionPanel.anchorTrack != null && TrackSelectionPanel.anchorTrack != track) {
+            TrackSelectionPanel.selectRange(TrackSelectionPanel.anchorTrack, track);
+        } else {
             selectionPanel.setTrackSelected(!selectionPanel.isTrackSelected());
+            TrackSelectionPanel.anchorTrack = track;
         }
     }
 

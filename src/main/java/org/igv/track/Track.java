@@ -20,6 +20,7 @@ import java.awt.event.MouseEvent;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 /**
  * @author jrobinso
@@ -336,6 +337,31 @@ public interface Track {
     float getYLine();
 
     void unload();
+
+    /**
+     * Id shared by exactly two tracks that have been paired via "Pair Tracks", or null if unpaired.
+     */
+    String getPairId();
+
+    void setPairId(String pairId);
+
+    /**
+     * Role (TOP/BOTTOM) of this track within its pair, or null if unpaired.
+     */
+    PairRole getPairRole();
+
+    void setPairRole(PairRole pairRole);
+
+    /**
+     * RTS-style numbered groups (1-9) this track currently belongs to. Never null.
+     */
+    Set<Integer> getTrackGroups();
+
+    void setTrackGroups(Set<Integer> groups);
+
+    void addToTrackGroup(int groupNumber);
+
+    void removeFromTrackGroup(int groupNumber);
 
     boolean getAutoScale();
 

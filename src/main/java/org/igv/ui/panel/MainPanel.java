@@ -7,6 +7,7 @@ import org.igv.prefs.PreferencesManager;
 import org.igv.track.AttributeManager;
 import org.igv.track.Track;
 import org.igv.track.DataType;
+import org.igv.track.TrackMenuUtils;
 import org.igv.ui.IGV;
 import org.igv.ui.util.UIUtilities;
 import org.igv.util.LongRunningTask;
@@ -21,6 +22,8 @@ import java.awt.event.ComponentEvent;
 import java.awt.event.ComponentListener;
 import java.awt.event.ContainerEvent;
 import java.awt.event.ContainerListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.net.URI;
 import java.util.*;
@@ -38,6 +41,12 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
 
     IGV igv;
 
+    // Guards against processing the same native drop gesture twice - e.g. if it reaches
+    // drop() both directly (MainPanel's own top-level DropTarget) and via a descendant's
+    // forwarding DropTarget (see installDropTargetRecursively). A genuine new drop always
+    // creates a new DropTargetDropEvent instance, so this can't block legitimate drops.
+    private DropTargetDropEvent lastProcessedDrop;
+
     // private static final int DEFAULT_NAME_PANEL_WIDTH = 160;
 
     private int namePanelX;
@@ -54,6 +63,7 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
     private NameHeaderPanel nameHeaderPanel;
     private AttributeHeaderPanel attributeHeaderPanel;
     private HeaderSelectAllPanel headerSelectAllPanel;
+    private GroupTabsPanel groupTabsPanel;
 
     private int hgap = 5;
     private JScrollPane headerScrollPane;
@@ -224,6 +234,23 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
             }
         });
         add(trackPanelScrollPane, BorderLayout.CENTER);
+
+        // trackPanelContainer doesn't stretch to fill the viewport (see
+        // ScrollableTrackContainer.getScrollableTracksViewportHeight()), so when there's
+        // more viewport height than track content, the leftover dead space below the last
+        // track belongs to the JViewport itself, not to trackPanelContainer - the listener
+        // added in ScrollableTrackContainer's own constructor never sees those clicks.
+        trackPanelScrollPane.getViewport().addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    TrackMenuUtils.clearAllTrackSelections();
+                }
+            }
+        });
+
+        groupTabsPanel = new GroupTabsPanel();
+        add(groupTabsPanel, BorderLayout.SOUTH);
 
         setBackground(PreferencesManager.getPreferences().getAsColor(BACKGROUND_COLOR));
 
@@ -735,6 +762,12 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
 
     @Override
     public void drop(DropTargetDropEvent dtde) {
+        if (dtde == lastProcessedDrop) {
+            // Already handled this exact drop gesture via another forwarding path.
+            dtde.dropComplete(true);
+            return;
+        }
+        lastProcessedDrop = dtde;
         try {
             dtde.acceptDrop(DnDConstants.ACTION_COPY);
             Transferable transferable = dtde.getTransferable();
@@ -788,6 +821,20 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
                 }
             }
 
+            // A single Finder drag commonly exposes BOTH javaFileListFlavor and
+            // text/uri-list for the same file(s) - the block above adds a file from
+            // javaFileListFlavor and then adds it AGAIN from the file:// URI in
+            // text/uri-list, so droppedFiles ends up with every dropped file duplicated.
+            // Deduplicate by absolute path, preserving first-seen order.
+            List<File> dedupedFiles = new ArrayList<>();
+            Set<String> seenPaths = new HashSet<>();
+            for (File f : droppedFiles) {
+                if (seenPaths.add(f.getAbsolutePath())) {
+                    dedupedFiles.add(f);
+                }
+            }
+            droppedFiles = dedupedFiles;
+
             // Load dropped files and URLs as tracks or sessions
             List<ResourceLocator> locators = new ArrayList<>();
 
@@ -816,7 +863,22 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
                 locators.add(new ResourceLocator(url));
             }
 
-            if (!locators.isEmpty()) {
+            // A local path can reach here twice through genuinely separate routes: once as
+            // a File from javaFileListFlavor, and again as a plain (non "file://") path
+            // string via the text/uri-list flavor - that string fails the file-scheme check
+            // above and lands in droppedUrls instead, so the droppedFiles-level dedup above
+            // doesn't catch it. Dedupe the final locator list by resolved path as the
+            // authoritative guard, regardless of which branch a path arrived through.
+            List<ResourceLocator> dedupedLocators = new ArrayList<>();
+            Set<String> seenLocatorPaths = new HashSet<>();
+            for (ResourceLocator loc : locators) {
+                if (seenLocatorPaths.add(loc.getPath())) {
+                    dedupedLocators.add(loc);
+                }
+            }
+            locators = dedupedLocators;
+
+            if (!locators.isEmpty() && !isDuplicateLoad(locators)) {
                 igv.loadTracks(locators);
             }
 
@@ -824,6 +886,31 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
         } catch (Exception e) {
             dtde.dropComplete(false);
         }
+    }
+
+    private List<String> lastLoadedPaths;
+    private long lastLoadTimeMs;
+
+    /**
+     * True if this exact set of paths/URLs was just requested moments ago. Guards against
+     * double-loading a drag-and-dropped file: the same-object check on {@code dtde} above
+     * only catches the exact same event instance reaching drop() twice, but IGV also has a
+     * separate, older DropTarget-forwarding mechanism (installDropTargetRecursively) that
+     * can, for a single drag gesture, end up delivering to drop() via more than one path
+     * with logically-equivalent-but-distinct event objects. Comparing the resolved locator
+     * paths within a short window catches that case too, without needing to pin down
+     * exactly which forwarding path double-fires.
+     */
+    private boolean isDuplicateLoad(List<ResourceLocator> locators) {
+        List<String> paths = new ArrayList<>();
+        for (ResourceLocator loc : locators) {
+            paths.add(loc.getPath());
+        }
+        long now = System.currentTimeMillis();
+        boolean duplicate = paths.equals(lastLoadedPaths) && (now - lastLoadTimeMs) < 1500;
+        lastLoadedPaths = paths;
+        lastLoadTimeMs = now;
+        return duplicate;
     }
 
     private boolean isDragAcceptable(DropTargetDragEvent dtde) {

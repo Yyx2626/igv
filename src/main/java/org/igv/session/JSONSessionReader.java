@@ -1,6 +1,7 @@
 package org.igv.session;
 
 import org.apache.commons.io.IOUtils;
+import org.igv.data.AverageErrorBarDataSource;
 import org.igv.data.CombinedDataSource;
 import org.igv.feature.Locus;
 import org.igv.feature.RegionOfInterest;
@@ -178,6 +179,42 @@ public class JSONSessionReader implements SessionReader {
 
                     topLevelDescriptors.add(new TrackDescriptor(trackJson, childFutureIndices, childJsons, i));
 
+                } else if ("averageErrorBar".equals(type)) {
+                    // Average-with-error-bar track - collect child track futures, same shape as "merged"
+                    List<Integer> childFutureIndices = new ArrayList<>();
+                    List<JSONObject> childJsons = new ArrayList<>();
+
+                    JSONArray childTracksArray = trackJson.getJSONArray("tracks");
+                    for (int j = 0; j < childTracksArray.length(); j++) {
+                        JSONObject childTrackJson = childTracksArray.getJSONObject(j);
+                        if (childTrackJson.has("url")) {
+                            String url = resolvePath(childTrackJson.getString("url"));
+
+                            int futureIndex;
+                            if (urlToFutureIndex.containsKey(url)) {
+                                futureIndex = urlToFutureIndex.get(url);
+                            } else {
+                                ResourceLocator locator = new ResourceLocator(url);
+                                String format = childTrackJson.optString("format", null);
+                                if (format != null) {
+                                    locator.setFormat(format);
+                                }
+                                futureIndex = allTrackFutures.size();
+                                urlToFutureIndex.put(url, futureIndex);
+                                allTrackFutures.add(CompletableFuture.supplyAsync(() -> igv.load(locator))
+                                        .exceptionally(e -> {
+                                            log.error("Error loading child track: " + url, e);
+                                            return Collections.emptyList();
+                                        }));
+                            }
+
+                            childFutureIndices.add(futureIndex);
+                            childJsons.add(childTrackJson);
+                        }
+                    }
+
+                    topLevelDescriptors.add(new TrackDescriptor(trackJson, childFutureIndices, childJsons, i, TrackDescriptor.Type.AVERAGE_ERROR_BAR));
+
                 } else if ("combined".equals(type)) {
                     // Combined track - defer creation until referenced tracks are loaded
                     topLevelDescriptors.add(new TrackDescriptor(trackJson, i, TrackDescriptor.Type.COMBINED));
@@ -307,6 +344,46 @@ public class JSONSessionReader implements SessionReader {
                             trackById.put(mergedTracks.getId(), mergedTracks);
                         } else {
                             log.warn("Merged track has no valid child tracks: " + descriptor.trackJson.optString("name", "unknown"));
+                        }
+
+                    } else if (descriptor.isAverageErrorBar()) {
+                        // Assemble average-with-error-bar track from loaded child tracks
+                        List<DataTrack> childTracks = new ArrayList<>();
+                        for (int j = 0; j < descriptor.childFutureIndices.size(); j++) {
+                            int futureIndex = descriptor.childFutureIndices.get(j);
+                            JSONObject childJson = descriptor.childJsons.get(j);
+
+                            List<Track> loadedTracks = allTrackFutures.get(futureIndex).get();
+                            for (Track track : loadedTracks) {
+                                if (track instanceof DataTrack) {
+                                    track.unmarshalJSON(childJson);
+                                    childTracks.add((DataTrack) track);
+                                } else {
+                                    log.warn("Expected DataTrack but got: " + track.getClass().getName());
+                                }
+                            }
+                        }
+
+                        if (!childTracks.isEmpty()) {
+                            String id = descriptor.trackJson.optString("id", UUID.randomUUID().toString());
+                            String name = descriptor.trackJson.optString("name", "Average");
+                            WindowFunction resolvedFunction = WindowFunction.mean;
+                            if (descriptor.trackJson.has("windowFunction")) {
+                                try {
+                                    resolvedFunction = WindowFunction.valueOf(descriptor.trackJson.getString("windowFunction"));
+                                } catch (IllegalArgumentException e) {
+                                    log.warn("Unrecognized windowFunction: " + descriptor.trackJson.getString("windowFunction"));
+                                }
+                            }
+                            AverageErrorBarTrack avgTrack = new AverageErrorBarTrack(id, name);
+                            avgTrack.setMemberTracks(childTracks);
+                            avgTrack.setDatasource(new AverageErrorBarDataSource(childTracks, resolvedFunction));
+                            avgTrack.setOrder(descriptor.order);
+                            avgTrack.unmarshalJSON(descriptor.trackJson);
+                            igv.addTrack(avgTrack);
+                            trackById.put(avgTrack.getId(), avgTrack);
+                        } else {
+                            log.warn("Average-error-bar track has no valid child tracks: " + descriptor.trackJson.optString("name", "unknown"));
                         }
 
                     } else {
@@ -585,7 +662,7 @@ public class JSONSessionReader implements SessionReader {
      * references to the futures that will provide the loaded tracks.
      */
     private static class TrackDescriptor {
-        enum Type {SINGLE, MERGED, COMBINED, BLAT, MOTIF, GENOME}
+        enum Type {SINGLE, MERGED, COMBINED, BLAT, MOTIF, GENOME, AVERAGE_ERROR_BAR}
 
         final Type type;
         final JSONObject trackJson;
@@ -598,7 +675,12 @@ public class JSONSessionReader implements SessionReader {
 
         // Constructor for merged track
         TrackDescriptor(JSONObject trackJson, List<Integer> childFutureIndices, List<JSONObject> childJsons, int fileIndex) {
-            this.type = Type.MERGED;
+            this(trackJson, childFutureIndices, childJsons, fileIndex, Type.MERGED);
+        }
+
+        // Constructor for a "list of child futures" track (merged, averageErrorBar)
+        TrackDescriptor(JSONObject trackJson, List<Integer> childFutureIndices, List<JSONObject> childJsons, int fileIndex, Type type) {
+            this.type = type;
             this.trackJson = trackJson;
             this.childFutureIndices = childFutureIndices;
             this.childJsons = childJsons;
@@ -668,6 +750,10 @@ public class JSONSessionReader implements SessionReader {
 
         boolean isMerged() {
             return type == Type.MERGED;
+        }
+
+        boolean isAverageErrorBar() {
+            return type == Type.AVERAGE_ERROR_BAR;
         }
 
         boolean isCombined() {

@@ -13,6 +13,7 @@ import org.igv.alignment.AlignmentTrackUtils;
 import org.igv.alignment.SortOption;
 import org.igv.track.FeatureTrack;
 import org.igv.track.Track;
+import org.igv.track.TrackGrouping;
 import org.igv.ui.panel.FrameManager;
 import org.igv.ui.panel.ReferenceFrame;
 import org.igv.ui.util.MessageUtils;
@@ -52,7 +53,36 @@ public class GlobalKeyDispatcher implements KeyEventDispatcher {
         init();
     }
 
+    // Real-time Shift-key state, used by TrackSelectionPanel for Shift-click range-select.
+    // Tracked via a Toolkit-level AWTEventListener rather than only this class's own
+    // KeyEventDispatcher.dispatchKeyEvent: a KeyEventDispatcher only sees events that reach
+    // the focus-based dispatch chain, which can be affected by focus-traversal/consumption
+    // in ways that are hard to rule out; an AWTEventListener registered on the Toolkit
+    // observes every KeyEvent posted anywhere in the application unconditionally, before
+    // and independent of that dispatch chain, so it's the more robust source of truth.
+    // Both are wired to update the same flag - belt and suspenders.
+    private static volatile boolean shiftDown = false;
+
+    static {
+        Toolkit.getDefaultToolkit().addAWTEventListener(event -> {
+            if (event instanceof KeyEvent) {
+                KeyEvent ke = (KeyEvent) event;
+                if (ke.getKeyCode() == KeyEvent.VK_SHIFT) {
+                    shiftDown = ke.getID() == KeyEvent.KEY_PRESSED;
+                }
+            }
+        }, AWTEvent.KEY_EVENT_MASK);
+    }
+
+    public static boolean isShiftDown() {
+        return shiftDown;
+    }
+
     public boolean dispatchKeyEvent(KeyEvent event) {
+
+        if (event.getKeyCode() == KeyEvent.VK_SHIFT) {
+            shiftDown = event.getID() == KeyEvent.KEY_PRESSED;
+        }
 
         // If the source of this event is a text component don't process it here.
         final Object source = event.getSource();
@@ -255,6 +285,44 @@ public class GlobalKeyDispatcher implements KeyEventDispatcher {
         inputMap.put(deleteKey, "deleteTracks");
         inputMap.put(backspaceKey, "deleteTracks");
         actionMap.put("deleteTracks", deleteAction);
+
+        // RTS-style numbered track groups: plain N selects group N, Ctrl+N (re)defines
+        // group N as the current selection, Shift+N adds the current selection to group N.
+        final int[] digitKeyCodes = {
+                KeyEvent.VK_1, KeyEvent.VK_2, KeyEvent.VK_3, KeyEvent.VK_4, KeyEvent.VK_5,
+                KeyEvent.VK_6, KeyEvent.VK_7, KeyEvent.VK_8, KeyEvent.VK_9
+        };
+        for (int i = 0; i < digitKeyCodes.length; i++) {
+            final int groupNumber = i + 1;
+            final int keyCode = digitKeyCodes[i];
+
+            KeyStroke selectKey = KeyStroke.getKeyStroke(keyCode, 0, false);
+            String selectActionKey = "selectTrackGroup" + groupNumber;
+            inputMap.put(selectKey, selectActionKey);
+            actionMap.put(selectActionKey, new AbstractAction() {
+                public void actionPerformed(ActionEvent e) {
+                    TrackGrouping.selectGroup(groupNumber);
+                }
+            });
+
+            KeyStroke assignKey = KeyStroke.getKeyStroke(keyCode, KeyEvent.CTRL_DOWN_MASK, false);
+            String assignActionKey = "assignTrackGroup" + groupNumber;
+            inputMap.put(assignKey, assignActionKey);
+            actionMap.put(assignActionKey, new AbstractAction() {
+                public void actionPerformed(ActionEvent e) {
+                    TrackGrouping.assignGroup(groupNumber);
+                }
+            });
+
+            KeyStroke addKey = KeyStroke.getKeyStroke(keyCode, KeyEvent.SHIFT_DOWN_MASK, false);
+            String addActionKey = "addToTrackGroup" + groupNumber;
+            inputMap.put(addKey, addActionKey);
+            actionMap.put(addActionKey, new AbstractAction() {
+                public void actionPerformed(ActionEvent e) {
+                    TrackGrouping.addToGroup(groupNumber);
+                }
+            });
+        }
 
     }
 

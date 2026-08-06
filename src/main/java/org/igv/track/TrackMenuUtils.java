@@ -26,6 +26,8 @@ import org.igv.ui.DataRangeDialog;
 import org.igv.ui.FontManager;
 import org.igv.ui.HeatmapScaleDialog;
 import org.igv.ui.IGV;
+import org.igv.ui.PairedDataRangeDialog;
+import org.igv.ui.action.AverageErrorBarMenuAction;
 import org.igv.ui.color.ColorUtilities;
 import org.igv.ui.panel.FrameManager;
 import org.igv.ui.panel.IGVPopupMenu;
@@ -53,6 +55,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static org.igv.prefs.Constants.SHOW_SINGLE_TRACK_PANE_KEY;
 
@@ -88,6 +91,8 @@ public class TrackMenuUtils {
                 multiMenu.add(multiTitle);
                 multiMenu.addSeparator();
 
+                addPairedIndicator(multiMenu, track);
+
                 for (Component item : getSharedMenuItems(selectedTracks)) {
                     multiMenu.add(item);
                 }
@@ -95,15 +100,28 @@ public class TrackMenuUtils {
                     multiMenu.add(item);
                 }
 
-                boolean allDataTracks = selectedTracks.stream()
-                        .allMatch(t -> t.getType() == TrackType.wig || t.getType() == TrackType.merged);
-                if (allDataTracks) {
+                for (Component item : getPairingMenuItems(selectedTracks)) {
+                    multiMenu.add(item);
+                }
+
+                // Filter to the applicable subset rather than requiring the WHOLE selection
+                // to uniformly match - e.g. "select all" via the header checkbox also picks
+                // up the always-present reference sequence track, which used to make an
+                // otherwise-all-wig selection fail this check and lose the entire Data Menu
+                // (Type of Graph, Windowing Function, Set Data Range, etc.) section, unlike
+                // manually shift-selecting just the data tracks. Non-matching tracks in the
+                // selection (like the sequence track) simply don't get these actions applied.
+                List<Track> dataTracksInSelection = selectedTracks.stream()
+                        .filter(t -> t.getType() == TrackType.wig || t.getType() == TrackType.merged
+                                || t.getType() == TrackType.averageErrorBar)
+                        .collect(Collectors.toList());
+                if (!dataTracksInSelection.isEmpty()) {
                     multiMenu.addSeparator();
-                    for (Component item : getDataMenuItems(selectedTracks)) {
+                    for (Component item : getDataMenuItems(dataTracksInSelection)) {
                         multiMenu.add(item);
                     }
 
-                    final List<DataTrack> dataTrackList = Lists.newArrayList(Iterables.filter(selectedTracks, DataTrack.class));
+                    final List<DataTrack> dataTrackList = Lists.newArrayList(Iterables.filter(dataTracksInSelection, DataTrack.class));
                     if (dataTrackList.size() > 1) {
                         final JMenuItem item = new JMenuItem("Overlay Tracks");
                         item.addActionListener(e -> {
@@ -115,13 +133,34 @@ public class TrackMenuUtils {
                         });
                         multiMenu.addSeparator();
                         multiMenu.add(item);
+
+                        JMenu averageMenu = new JMenu("Average With Error Bar");
+                        ButtonGroup errorBarGroup = new ButtonGroup();
+                        JRadioButtonMenuItem semItem = new JRadioButtonMenuItem("Error Bar: SEM", true);
+                        JRadioButtonMenuItem sdItem = new JRadioButtonMenuItem("Error Bar: SD", false);
+                        JRadioButtonMenuItem noneItem = new JRadioButtonMenuItem("No Error Bar", false);
+                        errorBarGroup.add(semItem);
+                        errorBarGroup.add(sdItem);
+                        errorBarGroup.add(noneItem);
+                        semItem.addActionListener(e ->
+                                AverageErrorBarMenuAction.createAverageErrorBarTrack(dataTracksInSelection, ErrorBarType.SEM));
+                        sdItem.addActionListener(e ->
+                                AverageErrorBarMenuAction.createAverageErrorBarTrack(dataTracksInSelection, ErrorBarType.SD));
+                        noneItem.addActionListener(e ->
+                                AverageErrorBarMenuAction.createAverageErrorBarTrack(dataTracksInSelection, ErrorBarType.NONE));
+                        averageMenu.add(semItem);
+                        averageMenu.add(sdItem);
+                        averageMenu.add(noneItem);
+                        multiMenu.add(averageMenu);
                     }
                 }
 
-                boolean allAnnotationTracks = selectedTracks.stream().allMatch(t -> t.getType() == TrackType.annotation);
-                if (allAnnotationTracks) {
+                List<Track> annotationTracksInSelection = selectedTracks.stream()
+                        .filter(t -> t.getType() == TrackType.annotation)
+                        .collect(Collectors.toList());
+                if (!annotationTracksInSelection.isEmpty()) {
                     multiMenu.addSeparator();
-                    for (Component item : getAnnotationMenuItems(selectedTracks, te)) {
+                    for (Component item : getAnnotationMenuItems(annotationTracksInSelection, te)) {
                         multiMenu.add(item);
                     }
                 }
@@ -131,9 +170,10 @@ public class TrackMenuUtils {
                 multiMenu.add(TrackMenuUtils.getRemoveMenuItem(selectedTracks));
 
                 return multiMenu;
-            } else {
-                clearTrackSelections();
             }
+            // Right-clicking a track outside the current multi-selection falls through to
+            // the single-track menu below WITHOUT touching checkbox state - right-click
+            // should never change which tracks are selected.
         }
 
         // Single track menu
@@ -142,6 +182,8 @@ public class TrackMenuUtils {
         popupTitle.setFont(FontManager.getFont(Font.BOLD, 12));
         menu.add(popupTitle);
         menu.addSeparator();
+
+        addPairedIndicator(menu, track);
 
         // Items most tracks share
         if (track.getType() != TrackType.sequence && track.getType() != TrackType.merged) {
@@ -188,7 +230,13 @@ public class TrackMenuUtils {
         IGV.getInstance().saveImage(track.getViewport(), "igv_panel", extension);
     }
 
-    private static void clearTrackSelections() {
+    /**
+     * Uncheck every track's selection checkbox. Used when clicking empty space below the
+     * track stack, or in the name-panel gutter above the tracks (see
+     * {@code MainPanel}/{@code NameHeaderPanel}) - NOT by the right-click popup-menu path
+     * (right-click must never change checkbox state).
+     */
+    public static void clearAllTrackSelections() {
         for (TrackPanel tp : IGV.getInstance().getTrackPanels()) {
             TrackPanelScrollPane sp = tp.getScrollPane();
             if (sp == null) continue;
@@ -229,7 +277,8 @@ public class TrackMenuUtils {
 
         boolean anyAlignment = tracks.stream().anyMatch(t -> t.getType() == TrackType.alignment);
         if (!anyAlignment) {
-            boolean allWig = !tracks.isEmpty() && tracks.stream().allMatch(t -> t.getType() == TrackType.wig);
+            boolean allWig = !tracks.isEmpty() && tracks.stream()
+                    .allMatch(t -> t.getType() == TrackType.wig || t.getType() == TrackType.averageErrorBar);
             String altLabel = allWig ? "Set Track Color (Negative Values)" : "Set Track Color (Negative Strand)";
             item = new JMenuItem(altLabel);
             item.setToolTipText(
@@ -248,6 +297,59 @@ public class TrackMenuUtils {
             }
         });
         items.add(item);
+
+        return items;
+    }
+
+    /**
+     * If {@code track} (the one right-clicked, whether or not it's part of a larger
+     * selection) is paired, add an informational "Top/Bottom of the pair with ..." label.
+     * Worded from {@code track}'s own role, not its partner's, to avoid the earlier
+     * "Paired with X (top)" phrasing where "(top)" read as describing X rather than the
+     * clicked track itself.
+     */
+    private static void addPairedIndicator(IGVPopupMenu menu, Track track) {
+        if (!TrackPairing.isPaired(track)) {
+            return;
+        }
+        Track partner = TrackPairing.findPartner(track, IGV.getInstance().getAllTracks());
+        String roleText = track.getPairRole() == PairRole.TOP ? "Top" : "Bottom";
+        String partnerName = partner != null ? partner.getName() : "?";
+        JLabel pairLabel = new JLabel(LEADING_HEADING_SPACER + roleText + " of the pair with \"" + partnerName + "\"");
+        pairLabel.setFont(FontManager.getFont(Font.ITALIC, 11));
+        menu.add(pairLabel);
+        menu.addSeparator();
+    }
+
+    /**
+     * "Pair Tracks" (exactly 2 selected, not already paired with each other) and/or
+     * "Unpair Tracks" (selection includes at least one already-paired track).
+     */
+    private static List<Component> getPairingMenuItems(Collection<Track> tracks) {
+        List<Component> items = new ArrayList<>();
+
+        List<Track> list = new ArrayList<>(tracks);
+        boolean anyPaired = list.stream().anyMatch(TrackPairing::isPaired);
+
+        if (list.size() == 2 && !(TrackPairing.isPaired(list.get(0))
+                && list.get(0).getPairId().equals(list.get(1).getPairId()))) {
+            JMenuItem item = new JMenuItem("Pair Tracks");
+            item.addActionListener(evt -> {
+                TrackPairing.unpair(list, IGV.getInstance().getAllTracks());
+                TrackPairing.pair(list.get(0), list.get(1));
+                IGV.getInstance().repaint(list);
+            });
+            items.add(item);
+        }
+
+        if (anyPaired) {
+            JMenuItem item = new JMenuItem("Unpair Tracks");
+            item.addActionListener(evt -> {
+                TrackPairing.unpair(list, IGV.getInstance().getAllTracks());
+                IGV.getInstance().repaint(list);
+            });
+            items.add(item);
+        }
 
         return items;
     }
@@ -428,11 +530,13 @@ public class TrackMenuUtils {
 
         List<Component> items = new ArrayList<>();
 
+        boolean allAverageErrorBar = !tracks.isEmpty() && tracks.stream().allMatch(t -> t instanceof AverageErrorBarTrack);
+
         final Map<String, Class> rendererMap = new LinkedHashMap<>();
         rendererMap.put("Heatmap", HeatmapRenderer.class);
-        rendererMap.put("Bar Chart", BarChartRenderer.class);
-        rendererMap.put("Points", PointsRenderer.class);
-        rendererMap.put("Line Plot", LineplotRenderer.class);
+        rendererMap.put("Bar Chart", allAverageErrorBar ? AverageErrorBarRenderer.class : BarChartRenderer.class);
+        rendererMap.put("Points", allAverageErrorBar ? AverageErrorBarPointsRenderer.class : PointsRenderer.class);
+        rendererMap.put("Line Plot", allAverageErrorBar ? AverageErrorBarLineplotRenderer.class : LineplotRenderer.class);
         rendererMap.put("DynSeq", DynSeqRenderer.class);
 
         JLabel rendererHeading = new JLabel(LEADING_HEADING_SPACER + "Type of Graph", JLabel.LEFT);
@@ -750,6 +854,12 @@ public class TrackMenuUtils {
         item.addActionListener(evt -> {
             if (selectedTracks.size() > 0) {
 
+                boolean anyPaired = selectedTracks.stream().anyMatch(TrackPairing::isPaired);
+                if (anyPaired) {
+                    showPairedDataRangeDialog(selectedTracks);
+                    return;
+                }
+
                 // Create a datarange that spans the extent of prev tracks range
                 DataRange prevAxisDefinition = DataRange.getFromTracks(selectedTracks);
                 DataRangeDialog dlg = new DataRangeDialog(IGV.getInstance().getMainFrame(), prevAxisDefinition);
@@ -775,6 +885,39 @@ public class TrackMenuUtils {
         });
 
         return item;
+    }
+
+    /**
+     * Data-Range dialog for a selection that includes at least one paired track: shows
+     * two independent Min/Mid/Max/Log groups, one applied to each pair's top track (plus
+     * any unpaired tracks in the selection) and one applied to each pair's bottom track.
+     */
+    private static void showPairedDataRangeDialog(Collection<Track> selectedTracks) {
+        TrackPairing.Partition partition = TrackPairing.partitionTopBottom(selectedTracks);
+
+        DataRange topDefaults = DataRange.getFromTracks(partition.top);
+        DataRange bottomDefaults = partition.bottom.isEmpty() ? topDefaults : DataRange.getFromTracks(partition.bottom);
+
+        PairedDataRangeDialog dlg = new PairedDataRangeDialog(IGV.getInstance().getMainFrame(), topDefaults, bottomDefaults);
+        dlg.setVisible(true);
+        if (dlg.isCanceled()) {
+            return;
+        }
+
+        DataRange topRange = dlg.getTopDataRange(topDefaults.isDrawBaseline());
+        DataRange bottomRange = dlg.getBottomDataRange(bottomDefaults.isDrawBaseline());
+
+        for (Track track : partition.top) {
+            track.setDataRange(topRange);
+            track.setAutoScale(false);
+            track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
+        }
+        for (Track track : partition.bottom) {
+            track.setDataRange(bottomRange);
+            track.setAutoScale(false);
+            track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
+        }
+        IGV.getInstance().repaint(selectedTracks);
     }
 
 
@@ -835,10 +978,32 @@ public class TrackMenuUtils {
 
         autoscaleItem.addActionListener(evt -> {
 
-            int nextAutoscaleGroup = IGV.getInstance().getSession().getNextAutoscaleGroup();
-            for (Track t : selectedTracks) {
-                t.setAttributeValue(AttributeManager.GROUP_AUTOSCALE, "" + nextAutoscaleGroup);
-                t.setAutoScale(false);
+            boolean anyPaired = selectedTracks.stream().anyMatch(TrackPairing::isPaired);
+            if (anyPaired) {
+                // Autoscale each pair's top-role tracks (plus any unpaired tracks) together
+                // as one group, and each pair's bottom-role tracks together as a separate
+                // group, rather than lumping top and bottom into a single shared scale.
+                TrackPairing.Partition partition = TrackPairing.partitionTopBottom(selectedTracks);
+                if (!partition.top.isEmpty()) {
+                    int topGroup = IGV.getInstance().getSession().getNextAutoscaleGroup();
+                    for (Track t : partition.top) {
+                        t.setAttributeValue(AttributeManager.GROUP_AUTOSCALE, autoscaleGroupLabel(topGroup));
+                        t.setAutoScale(false);
+                    }
+                }
+                if (!partition.bottom.isEmpty()) {
+                    int bottomGroup = IGV.getInstance().getSession().getNextAutoscaleGroup();
+                    for (Track t : partition.bottom) {
+                        t.setAttributeValue(AttributeManager.GROUP_AUTOSCALE, autoscaleGroupLabel(bottomGroup));
+                        t.setAutoScale(false);
+                    }
+                }
+            } else {
+                int nextAutoscaleGroup = IGV.getInstance().getSession().getNextAutoscaleGroup();
+                for (Track t : selectedTracks) {
+                    t.setAttributeValue(AttributeManager.GROUP_AUTOSCALE, autoscaleGroupLabel(nextAutoscaleGroup));
+                    t.setAutoScale(false);
+                }
             }
 
             PreferencesManager.getPreferences().setShowAttributeView(true);
@@ -848,6 +1013,21 @@ public class TrackMenuUtils {
         });
 
         return autoscaleItem;
+    }
+
+    /**
+     * Formats an autoscale group id as a non-numeric-looking string ("Group 3", not
+     * "3"). AttributeManager's color-scale heuristic (ColumnMetaData.isNumeric()) treats
+     * a column as continuous-numeric once it's seen 2+ distinct values that all parse as
+     * numbers, switching from a discrete, maximally-distinct palette to a light-to-dark
+     * blue gradient - which made a low-numbered group (e.g. "0") render as a pale,
+     * near-invisible blue once a second group existed. Group ids are inherently
+     * categorical (there's no meaningful "in between" group 0.5), so keep this column
+     * non-numeric-parseable to keep the palette one it always used before a second
+     * distinct value appeared.
+     */
+    private static String autoscaleGroupLabel(int groupId) {
+        return "Group " + groupId;
     }
 
     private static boolean checkAutoscale(Collection<Track> selectedTracks) {

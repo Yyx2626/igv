@@ -12,8 +12,15 @@
 #Add the flag -Ddevelopment = true to use features still in development
 prefix="$(cd "$(dirname "$0")" && pwd)"
 
-# Check whether or not to use the bundled JDK
-if [ -d "${prefix}/jdk-21" ]; then
+# Check whether or not to use the bundled JDK. Prefer an architecture-specific bundle
+# (jdk-21-x86_64 / jdk-21-arm64) over a plain jdk-21, so a single IGV-dist folder shared
+# between an Intel and an Apple Silicon Mac (e.g. via Dropbox) picks the right one on
+# each machine automatically.
+ARCH="$(uname -m)"
+if [ -d "${prefix}/jdk-21-${ARCH}" ]; then
+    JAVA_HOME="${prefix}/jdk-21-${ARCH}"
+    PATH=$JAVA_HOME/bin:$PATH
+elif [ -d "${prefix}/jdk-21" ]; then
     JAVA_HOME="${prefix}/jdk-21"
     PATH=$JAVA_HOME/bin:$PATH
 else

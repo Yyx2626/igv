@@ -3,9 +3,12 @@ package org.igv.ui.panel;
 import org.igv.Globals;
 import org.igv.prefs.Constants;
 import org.igv.prefs.PreferencesManager;
+import org.igv.track.TrackMenuUtils;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
 /**
  * A scrollable panel container that uses BoxLayout and doesn't stretch vertically
@@ -23,6 +26,19 @@ public class ScrollableTrackContainer extends JPanel implements Scrollable {
         } else {
             setBackground(PreferencesManager.getPreferences().getAsColor(Constants.BACKGROUND_COLOR));
         }
+
+        // A click landing directly on this container (rather than on a child
+        // TrackPanelScrollPane) is, by construction, in the empty space below the last
+        // track - clear the selection checkboxes, mirroring clicking empty space in
+        // Finder/Explorer to deselect everything.
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (SwingUtilities.isLeftMouseButton(e)) {
+                    TrackMenuUtils.clearAllTrackSelections();
+                }
+            }
+        });
     }
 
     @Override
