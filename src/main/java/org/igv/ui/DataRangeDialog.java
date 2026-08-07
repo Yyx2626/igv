@@ -40,7 +40,7 @@ public class DataRangeDialog extends org.igv.ui.IGVDialog  {
             minTextField.setText(String.valueOf(min));
             baseTextField.setText(String.valueOf(base));
             maxTextField.setText(String.valueOf(max));
-            midColorSwatch.setSelectedColor(axisDefinition.getMidlineColor() != null ? axisDefinition.getMidlineColor() : Color.lightGray);
+            midColorSwatch.setSelectedColor(axisDefinition.getMidlineColor() != null ? axisDefinition.getMidlineColor() : DataRange.DEFAULT_MIDLINE_COLOR);
         }
     }
 
@@ -71,7 +71,7 @@ public class DataRangeDialog extends org.igv.ui.IGVDialog  {
         cancelButton = new javax.swing.JButton();
         isLogCheckBox = new JCheckBox();
         isLogLabel = new JLabel("Log scale");
-        midColorSwatch = new ColorSwatch(Color.lightGray);
+        midColorSwatch = new ColorSwatch(DataRange.DEFAULT_MIDLINE_COLOR);
         midColorSwatch.setToolTipText("Mid line color");
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);

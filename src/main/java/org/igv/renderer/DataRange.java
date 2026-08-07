@@ -18,6 +18,8 @@ import java.util.Collection;
 
 public class DataRange {
 
+    /** Default Mid-line color when {@link #midlineColor} isn't explicitly set - a light, unobtrusive gray (lighter than {@code Color.lightGray}, which reads as noticeably darker against a near-white track background). */
+    public static final Color DEFAULT_MIDLINE_COLOR = new Color(225, 225, 225);
 
     /**
      * The scale type,  linear by default

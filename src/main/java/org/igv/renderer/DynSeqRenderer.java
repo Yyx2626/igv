@@ -4,7 +4,6 @@ import org.igv.feature.LocusScore;
 import org.igv.feature.Strand;
 import org.igv.feature.genome.GenomeManager;
 import org.igv.feature.genome.SeqUtils;
-import org.igv.prefs.IGVPreferences;
 import org.igv.track.RenderContext;
 import org.igv.track.Track;
 import org.igv.ui.IGV;
@@ -29,11 +28,6 @@ public class DynSeqRenderer extends XYPlotRenderer {
     @Override
     public String getDisplayName() {
         return "DynSeq";
-    }
-
-    @Override
-    protected Color getBorderColor(Track track, IGVPreferences prefs, Color altColor) {
-        return Color.lightGray;
     }
 
     /**

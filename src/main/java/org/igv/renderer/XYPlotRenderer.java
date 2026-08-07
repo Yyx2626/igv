@@ -220,7 +220,7 @@ public abstract class XYPlotRenderer extends DataRenderer {
             // the color swatch in the Data Range dialog (DataRange.midlineColor).
             final Color borderColor = axisDefinition.getMidlineColor() != null
                     ? axisDefinition.getMidlineColor()
-                    : Color.lightGray;
+                    : DataRange.DEFAULT_MIDLINE_COLOR;
             Graphics2D borderGraphics = context.getGraphic2DForColor(borderColor);
 
             // Draw the baseline -- todo, this is a wig track option?
@@ -238,12 +238,6 @@ public abstract class XYPlotRenderer extends DataRenderer {
         }
     }
 
-    protected Color getBorderColor(Track track, IGVPreferences prefs, Color altColor) {
-        Color borderColor = (prefs.getAsBoolean(CHART_COLOR_BORDERS) && altColor != null && altColor.equals(track.getColor()))
-                ? track.getColor() : Color.lightGray;
-        return borderColor;
-    }
-
     /**
      * Get a graphics object for the baseline.
      * TODO -- make the line style settable by the user
@@ -252,7 +246,7 @@ public abstract class XYPlotRenderer extends DataRenderer {
      * @return
      */
     private static Graphics2D getBaselineGraphics(RenderContext context, DataRange axisDefinition) {
-        Color color = axisDefinition.getMidlineColor() != null ? axisDefinition.getMidlineColor() : Color.lightGray;
+        Color color = axisDefinition.getMidlineColor() != null ? axisDefinition.getMidlineColor() : DataRange.DEFAULT_MIDLINE_COLOR;
         return (Graphics2D) context.getGraphic2DForColor(color).create();
     }
 
