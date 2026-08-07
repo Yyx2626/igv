@@ -181,7 +181,9 @@ public class HeaderPanel extends JPanel implements Transferable, Paintable, IGVE
         } else {
 
             JPanel panel = new JPanel();
-            setBorder(javax.swing.BorderFactory.createLineBorder(Color.gray));
+            // No border here - a hardcoded gray outline around just the ruler/cytoband area
+            // would visually separate it from the track area below even once their background
+            // colors match, undermining the uniform look Constants.HEADER_BACKGROUND_COLOR is for.
             panel.setBackground(headerBackground);
             panel.setMinimumSize(new java.awt.Dimension(700, 0));
             panel.setPreferredSize(new java.awt.Dimension(0, 0));

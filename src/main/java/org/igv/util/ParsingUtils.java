@@ -3,9 +3,10 @@ package org.igv.util;
 import htsjdk.samtools.util.ftp.FTPClient;
 import htsjdk.samtools.util.ftp.FTPReply;
 import htsjdk.tribble.readers.AsciiLineReader;
-import org.igv.Globals;
 import org.igv.logging.LogManager;
 import org.igv.logging.Logger;
+import org.igv.prefs.Constants;
+import org.igv.prefs.PreferencesManager;
 import org.igv.renderer.*;
 import org.igv.track.Track;
 import org.igv.track.TrackProperties;
@@ -253,7 +254,7 @@ public class ParsingUtils {
                 // Use JDK url
                 URL url = HttpUtils.createURL(path);
                 URLConnection connection = url.openConnection();
-                connection.setConnectTimeout(Globals.CONNECT_TIMEOUT);
+                connection.setConnectTimeout(PreferencesManager.getPreferences().getAsInt(Constants.HTTP_CONNECT_TIMEOUT));
                 //For reasons beyond my ken, on Java 7 getContentLength
                 //returns -1 without attempting a connection
                 //contentLength = connection.getContentLength();

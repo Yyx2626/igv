@@ -160,8 +160,13 @@ public abstract class XYPlotRenderer extends DataRenderer {
 
             labelGraphics.drawLine(axisRect.x + AXIS_AREA_WIDTH - 10, topPY,
                     axisRect.x + AXIS_AREA_WIDTH - 5, topPY);
+            // Baseline offset by the font's ascent (not a flat "+4"), so the label's glyphs
+            // stay below topPY (near the very top of the track rect) instead of extending
+            // above it - a flat offset smaller than the ascent let the label bleed into
+            // whatever sits directly above this track (e.g. TrackPanelDivider), clipping it.
+            int topLabelBaseline = topPY + labelGraphics.getFontMetrics().getAscent();
             GraphicUtils.drawRightJustifiedText(formatter.format(maxValue),
-                    axisRect.x + AXIS_AREA_WIDTH - 15, topPY + 4, labelGraphics);
+                    axisRect.x + AXIS_AREA_WIDTH - 15, topLabelBaseline, labelGraphics);
 
             // Connect top and bottom
             labelGraphics.drawLine(axisRect.x + AXIS_AREA_WIDTH - 10, topPY,

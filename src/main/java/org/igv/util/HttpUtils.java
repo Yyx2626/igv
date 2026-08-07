@@ -602,8 +602,8 @@ private HttpURLConnection openConnectionHeadOrGet(URL url) throws IOException {
                 conn.setRequestProperty("Accept", "text/plain");
             }
 
-            conn.setConnectTimeout(Globals.CONNECT_TIMEOUT);
-            conn.setReadTimeout(Globals.READ_TIMEOUT);
+            conn.setConnectTimeout(PreferencesManager.getPreferences().getAsInt(HTTP_CONNECT_TIMEOUT));
+            conn.setReadTimeout(PreferencesManager.getPreferences().getAsInt(HTTP_READ_TIMEOUT));
             conn.setRequestMethod(method);
             conn.setRequestProperty("Connection", "Keep-Alive");
             // we'll handle redirects manually, allowing us to cache the new URL

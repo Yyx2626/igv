@@ -318,6 +318,13 @@ final public class Constants {
     public static final String PORT_ENABLED = "PORT_ENABLED";
     public static final String PORT_NUMBER = "PORT_NUMBER";
 
+    // HTTP connection timeouts (ms) - user-configurable so a slow/unreachable remote host
+    // (e.g. a genome's default annotation server) doesn't block startup or track loading for
+    // the full default duration. Read live from IGVPreferences, not cached at construction, so
+    // changing them takes effect immediately without a restart.
+    public static final String HTTP_CONNECT_TIMEOUT = "HTTP.CONNECT_TIMEOUT";
+    public static final String HTTP_READ_TIMEOUT = "HTTP.READ_TIMEOUT";
+
     // Database support -- never deployed
     public static final String DB_ENABLED = "DB_ENABLED";
     public static final String DB_HOST = "DB_HOST";
