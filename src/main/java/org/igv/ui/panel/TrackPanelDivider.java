@@ -43,13 +43,19 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
 
     /**
      * Minimum Swing component height (and mouse hit-testable area) for this divider,
-     * regardless of the configured visual border height. Decouples "can this divider be
-     * dragged/right-clicked" from "how many pixels are painted in the border color" - a
-     * visual height of 0 (or 1) still gets this much real component height, but only its own
-     * getVisualBorderHeight() worth of that is actually painted in the border color; the rest
-     * is painted with computeBlendBackground() so it reads as "no border" rather than a gap.
+     * regardless of the configured visual border height. Two separate attempts at a
+     * genuinely zero-footprint divider (a transparent overlay floating in a JLayeredPane,
+     * absolutely positioned to straddle this divider's boundary) each broke drag-and-drop
+     * file loading in a different way (first: no response at all; second, after fixing the
+     * DnD action constant: only some of several simultaneously-dropped files actually got
+     * added to the track panel, and then further drops silently did nothing) - both
+     * un-debuggable further without live interactive testing, so this stays a plain
+     * flow-participating component with a small minimum height instead. Kept deliberately
+     * small (2, not the original 4) to minimize the break it causes in per-track vertical
+     * elements (e.g. the Y-axis boundary line) that assume their own track's top/bottom edge
+     * is the only gap - see computeBlendBackground().
      */
-    private static final int MIN_HIT_HEIGHT = 4;
+    private static final int MIN_HIT_HEIGHT = 2;
 
     /** Global default visual height, read fresh from Constants.TRACK_BORDER_HEIGHT on every layout pass - see the PreferencesChangeEvent handling below for what forces a re-layout after a Preferences change. */
     public static int getGlobalDividerHeight() {
