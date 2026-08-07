@@ -16,6 +16,8 @@ import org.igv.event.IGVEventBus;
 import org.igv.event.IGVEventObserver;
 import org.igv.event.ViewChange;
 import org.igv.feature.RegionOfInterest;
+import org.igv.prefs.Constants;
+import org.igv.prefs.PreferencesManager;
 import org.igv.track.TrackMenuUtils;
 import org.igv.ui.IGV;
 import org.igv.ui.util.IGVMouseInputAdapter;
@@ -59,8 +61,15 @@ public class HeaderPanel extends JPanel implements Transferable, Paintable, IGVE
 
         this.darkMode = Globals.isDarkMode();
 
+        // Match the track/name-panel background (Constants.BACKGROUND_COLOR) by default, rather
+        // than a hardcoded white, so the ruler/cytoband bar doesn't show a visible seam against
+        // the track area below it - see Constants.HEADER_BACKGROUND_COLOR javadoc.
+        Color headerBackground = darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.HEADER_BACKGROUND_COLOR)
+                ? UIManager.getColor("Panel.background")
+                : PreferencesManager.getPreferences().getAsColor(Constants.HEADER_BACKGROUND_COLOR);
+
         //setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(200, 200, 200)));
-        setBackground(darkMode ? UIManager.getColor("Panel.background") : new java.awt.Color(255, 255, 255));
+        setBackground(headerBackground);
         setMinimumSize(new java.awt.Dimension(700, 0));
         setPreferredSize(new java.awt.Dimension(0, 0));
         setLayout(new java.awt.BorderLayout());
@@ -147,17 +156,17 @@ public class HeaderPanel extends JPanel implements Transferable, Paintable, IGVE
             BoxLayout layout = new BoxLayout(labelPanel, BoxLayout.LINE_AXIS);
             labelPanel.setLayout(layout);
             final JPanel spacerLeft = new JPanel();
-            spacerLeft.setBackground(new java.awt.Color(255, 255, 255));
+            spacerLeft.setBackground(headerBackground);
             labelPanel.add(spacerLeft);
             labelPanel.add(label);
             final JPanel spacerRight = new JPanel();
-            spacerRight.setBackground(new java.awt.Color(255, 255, 255));
+            spacerRight.setBackground(headerBackground);
             labelPanel.add(spacerRight);
-            labelPanel.setBackground(new java.awt.Color(255, 255, 255));
+            labelPanel.setBackground(headerBackground);
             geneListPanel.add(labelPanel, BorderLayout.CENTER);
 
             JPanel bottomPanel = new JPanel();
-            bottomPanel.setBackground(new java.awt.Color(255, 255, 255));
+            bottomPanel.setBackground(headerBackground);
             geneListPanel.add(bottomPanel, BorderLayout.SOUTH);
 
             add(geneListPanel);
@@ -173,25 +182,25 @@ public class HeaderPanel extends JPanel implements Transferable, Paintable, IGVE
 
             JPanel panel = new JPanel();
             setBorder(javax.swing.BorderFactory.createLineBorder(Color.gray));
-            panel.setBackground(new java.awt.Color(255, 255, 255));
+            panel.setBackground(headerBackground);
             panel.setMinimumSize(new java.awt.Dimension(700, 0));
             panel.setPreferredSize(new java.awt.Dimension(0, 0));
             panel.setLayout(new java.awt.BorderLayout());
 
             cytobandPanel = new CytobandPanel(frame);
-            cytobandPanel.setBackground(new java.awt.Color(255, 255, 255));
+            cytobandPanel.setBackground(headerBackground);
             cytobandPanel.setPreferredSize(new java.awt.Dimension(0, 50));
             cytobandPanel.setRequestFocusEnabled(false);
             cytobandPanel.setLayout(null);
             panel.add(cytobandPanel, java.awt.BorderLayout.NORTH);
 
             rulerPanel = new RulerPanel(frame);
-            rulerPanel.setBackground(new java.awt.Color(255, 255, 255));
+            rulerPanel.setBackground(headerBackground);
             rulerPanel.setLayout(null);
             panel.add(rulerPanel, java.awt.BorderLayout.CENTER);
 
             regionOfInterestPane = new RegionOfInterestPanel(frame);
-            regionOfInterestPane.setBackground(new java.awt.Color(255, 255, 255));
+            regionOfInterestPane.setBackground(headerBackground);
             regionOfInterestPane.setMinimumSize(new java.awt.Dimension(0, 13));
 
 

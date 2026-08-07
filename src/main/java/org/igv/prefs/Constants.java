@@ -27,6 +27,8 @@ final public class Constants {
     public static final String FONT_SCALE_FACTOR = "FONT_SCALE_FACTOR";
     public static final String NAME_PANEL_WIDTH = "NAME_PANEL_WIDTH";
     public static final String BACKGROUND_COLOR = "BACKGROUND_COLOR";
+    /** Ruler/cytoband header background - defaults to the same value as {@link #BACKGROUND_COLOR} so the header bar doesn't show a visible seam against the track area below it. */
+    public static final String HEADER_BACKGROUND_COLOR = "HEADER_BACKGROUND_COLOR";
     public static final String SHOW_ATTRIBUTE_VIEWS_KEY = "IGV.track.show.attribute.views";
     public static final String SHOW_SINGLE_TRACK_PANE_KEY = "IGV.single.track.pane";
     public static final String DETAILS_BEHAVIOR_KEY = "DETAILS_BEHAVIOR";
@@ -110,7 +112,11 @@ final public class Constants {
     public static final String CHART_COLOR_TRACK_NAME = "CHART.COLOR_TRACK_NAME";
 
     // Track border and options.  Originally these were for chart tracks only, thus the names.
+    // TRACK_DRAW_BORDERS is retained only for IGVPreferences.migrateUserPreferences()'s one-time
+    // migration of the older CHART_DRAW_TOP/BOTTOM_BORDER keys; it is no longer read by any
+    // renderer - TRACK_BORDER_HEIGHT (a pixel height, 0 = no border) replaced it in the UI.
     public static final String TRACK_DRAW_BORDERS = "TRACK.DRAW_BORDERS";
+    public static final String TRACK_BORDER_HEIGHT = "TRACK.BORDER_HEIGHT";
     public static final String TRACK_BORDER_COLOR = "TRACK.BORDER_COLOR";
     public static final String CHART_DRAW_TOP_BORDER = "CHART.DRAW_TOP_BORDER";
     public static final String CHART_DRAW_BOTTOM_BORDER = "CHART.DRAW_BOTTOM_BORDER";
@@ -417,6 +423,9 @@ final public class Constants {
      * List of keys that require a restart
      */
     static java.util.List<String> RESTART_KEYS = Arrays.asList(
-            BACKGROUND_COLOR
+            BACKGROUND_COLOR,
+            HEADER_BACKGROUND_COLOR,
+            TRACK_BORDER_COLOR,
+            TRACK_BORDER_HEIGHT
     );
 }

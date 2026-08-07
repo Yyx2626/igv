@@ -1543,7 +1543,13 @@ public abstract class AbstractTrack implements Track {
         }
 
         if (jsonObject.has("pairId")) {
-            this.pairId = jsonObject.getString("pairId");
+            // Route through setAttributeValue (like autoscaleGroup above), not a direct field
+            // assignment - setAttributeValue also registers "PAIR_GROUP" with AttributeManager,
+            // which IGV.resetSession() clears before a session reload recreates every track. A
+            // direct assignment restores pairId/getPairId() (pairing logic keeps working) but
+            // leaves the PAIR GROUP attribute-panel column unregistered, so it silently vanishes
+            // after Save/Load Session even though AUTOSCALE GROUP survives.
+            this.setAttributeValue(AttributeManager.PAIR_GROUP, jsonObject.getString("pairId"));
             if (jsonObject.has("pairRole")) {
                 try {
                     this.pairRole = PairRole.valueOf(jsonObject.getString("pairRole"));

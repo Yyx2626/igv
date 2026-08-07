@@ -2,6 +2,7 @@ package org.igv.ui.panel;
 
 import org.igv.Globals;
 import org.igv.prefs.Constants;
+import org.igv.prefs.IGVPreferences;
 import org.igv.prefs.PreferencesManager;
 import org.igv.track.Track;
 import org.igv.ui.IGV;
@@ -34,7 +35,10 @@ import java.util.List;
  */
 public class TrackPanelDivider extends JPanel {
 
-    public static final int DIVIDER_HEIGHT = 5;
+    /** Height of the visible border between tracks, read fresh from Constants.TRACK_BORDER_HEIGHT (a RESTART_KEY - changing it takes effect on next launch, matching BACKGROUND_COLOR's precedent). */
+    public static int getDividerHeight() {
+        return Math.max(0, PreferencesManager.getPreferences().getAsInt(Constants.TRACK_BORDER_HEIGHT));
+    }
 
     /**
      * The immediate pane above this divider.
@@ -52,9 +56,11 @@ public class TrackPanelDivider extends JPanel {
         this.abovePane = abovePane;
 
         setCursor(Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR));
-        setBackground(Globals.isDarkMode() ?
-                new Color(200, 200, 200) :
-                new Color(230, 230, 230));
+        boolean darkMode = Globals.isDarkMode();
+        IGVPreferences prefs = PreferencesManager.getPreferences();
+        setBackground(darkMode && !prefs.hasExplicitValue(Constants.TRACK_BORDER_COLOR)
+                ? new Color(200, 200, 200)
+                : prefs.getAsColor(Constants.TRACK_BORDER_COLOR));
 
         MouseAdapter mouseAdapter = new MouseAdapter() {
             @Override
@@ -245,19 +251,19 @@ public class TrackPanelDivider extends JPanel {
 
     @Override
     public Dimension getPreferredSize() {
-        int h = shouldBeVisible() ? DIVIDER_HEIGHT : 0;
+        int h = shouldBeVisible() ? getDividerHeight() : 0;
         return new Dimension(Integer.MAX_VALUE, h);
     }
 
     @Override
     public Dimension getMinimumSize() {
-        int h = shouldBeVisible() ? DIVIDER_HEIGHT : 0;
+        int h = shouldBeVisible() ? getDividerHeight() : 0;
         return new Dimension(0, h);
     }
 
     @Override
     public Dimension getMaximumSize() {
-        int h = shouldBeVisible() ? DIVIDER_HEIGHT : 0;
+        int h = shouldBeVisible() ? getDividerHeight() : 0;
         return new Dimension(Integer.MAX_VALUE, h);
     }
 
