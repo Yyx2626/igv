@@ -10,13 +10,20 @@
 #Add the flag -Dsun.java2d.uiScale=2 for HiDPI displays
 prefix="$(cd "$(dirname "$0")" && pwd)"
 
-# Check whether or not to use the bundled JDK
-if [ -d "${prefix}/jdk-21" ]; then
-    echo echo "Using bundled JDK."
-    JAVA_HOME="${prefix}/jdk-21"
-    PATH=$JAVA_HOME/bin:$PATH
+# Select a bundled JDK only when its OS and architecture match.
+case "$(uname -s):$(uname -m)" in
+    Darwin:arm64) JDK_DIR="jdk-21-macos-arm64" ;;
+    Darwin:x86_64) JDK_DIR="jdk-21-macos-x86_64" ;;
+    *) JDK_DIR="" ;;
+esac
+
+if [ -n "$JDK_DIR" ] && [ -x "${prefix}/${JDK_DIR}/bin/java" ]; then
+    JAVA_HOME="${prefix}/${JDK_DIR}"
+    PATH="${JAVA_HOME}/bin:${PATH}"
+    export JAVA_HOME PATH
+    echo "Using bundled ${JDK_DIR} JDK." >&2
 else
-    echo "Using system JDK."
+    echo "Using system JDK. IGV requires Java 21." >&2
 fi
 
 # Check if there is a user-specified Java arguments file

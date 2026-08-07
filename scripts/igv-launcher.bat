@@ -3,13 +3,19 @@ setlocal
 for %%x in (%0) do set BatchPath=%%~dpsx
 for %%x in (%BatchPath%) do set BatchPath=%%~dpsx
 
-if exist %BatchPath%\jdk-21 (
-  echo "Using bundled JDK."
-  set JAVA_HOME=%BatchPath%\jdk-21
-  set JAVA_CMD=%BatchPath%\jdk-21\bin\javaw
+set "WindowsArch=%PROCESSOR_ARCHITECTURE%"
+if defined PROCESSOR_ARCHITEW6432 set "WindowsArch=%PROCESSOR_ARCHITEW6432%"
+set "BundledJdk="
+if /I "%WindowsArch%"=="ARM64" set "BundledJdk=jdk-21-windows-arm64"
+if /I "%WindowsArch%"=="AMD64" set "BundledJdk=jdk-21-windows-x86_64"
+
+set JAVA_CMD=java
+if defined BundledJdk if exist %BatchPath%%BundledJdk%\bin\javaw.exe (
+  echo "Using bundled %BundledJdk% JDK."
+  set JAVA_HOME=%BatchPath%%BundledJdk%
+  set JAVA_CMD=%BatchPath%%BundledJdk%\bin\javaw.exe
 ) else (
-  echo "Using system JDK."
-  set JAVA_CMD=java
+  echo "Using system JDK. IGV requires Java 21."
 )
 
 ::-Xmx8g indicates 8 gb of memory.
