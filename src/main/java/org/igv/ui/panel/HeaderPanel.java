@@ -57,16 +57,29 @@ public class HeaderPanel extends JPanel implements Transferable, Paintable, IGVE
         init();
     }
 
+    /**
+     * Match the track/name-panel background (Constants.BACKGROUND_COLOR) by default, rather than
+     * a hardcoded white, so the ruler/cytoband bar doesn't show a visible seam against the track
+     * area below it - see Constants.HEADER_BACKGROUND_COLOR javadoc. Called fresh from
+     * paintComponent (not just once from init()) so a Preferences change is reflected on the next
+     * repaint with no restart needed.
+     */
+    private Color computeHeaderBackground() {
+        return darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.HEADER_BACKGROUND_COLOR)
+                ? UIManager.getColor("Panel.background")
+                : PreferencesManager.getPreferences().getAsColor(Constants.HEADER_BACKGROUND_COLOR);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        setBackground(computeHeaderBackground());
+        super.paintComponent(g);
+    }
+
     private void init() {
 
         this.darkMode = Globals.isDarkMode();
-
-        // Match the track/name-panel background (Constants.BACKGROUND_COLOR) by default, rather
-        // than a hardcoded white, so the ruler/cytoband bar doesn't show a visible seam against
-        // the track area below it - see Constants.HEADER_BACKGROUND_COLOR javadoc.
-        Color headerBackground = darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.HEADER_BACKGROUND_COLOR)
-                ? UIManager.getColor("Panel.background")
-                : PreferencesManager.getPreferences().getAsColor(Constants.HEADER_BACKGROUND_COLOR);
+        Color headerBackground = computeHeaderBackground();
 
         //setBorder(javax.swing.BorderFactory.createLineBorder(new java.awt.Color(200, 200, 200)));
         setBackground(headerBackground);

@@ -429,10 +429,9 @@ final public class Constants {
     /**
      * List of keys that require a restart
      */
-    static java.util.List<String> RESTART_KEYS = Arrays.asList(
-            BACKGROUND_COLOR,
-            HEADER_BACKGROUND_COLOR,
-            TRACK_BORDER_COLOR,
-            TRACK_BORDER_HEIGHT
-    );
+    // BACKGROUND_COLOR, HEADER_BACKGROUND_COLOR, TRACK_BORDER_COLOR, and TRACK_BORDER_HEIGHT used
+    // to be here - DataPanel/TrackNamePanel/HeaderPanel now read their colors fresh on every
+    // paint, and TrackPanelDivider reacts to PreferencesChangeEvent with a revalidate(), so none
+    // of them need a restart anymore.
+    static java.util.List<String> RESTART_KEYS = Arrays.asList();
 }

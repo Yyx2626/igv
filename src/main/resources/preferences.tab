@@ -295,8 +295,8 @@ PROXY.PW	Password	string	null
 PORT_ENABLED	Enable port	boolean	TRUE
 PORT_NUMBER	Port number	integer	60151
 ---
-HTTP.CONNECT_TIMEOUT	HTTP connect timeout (ms)	integer	20000
-HTTP.READ_TIMEOUT	HTTP read timeout (ms) - lower this if startup/track loading hangs waiting on an unreachable remote server	integer	180000
+HTTP.CONNECT_TIMEOUT	HTTP connect timeout (ms)	integer	5000
+HTTP.READ_TIMEOUT	HTTP read timeout (ms) - lower this if startup/track loading hangs waiting on an unreachable remote server	integer	30000
 ---
 IGV.genome.sequence.dir	Genome server URL	string	https://igv.org/genomes/genomes3.tsv
 

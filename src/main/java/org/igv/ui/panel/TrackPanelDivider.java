@@ -1,8 +1,12 @@
 package org.igv.ui.panel;
 
 import org.igv.Globals;
+import org.igv.event.IGVEvent;
+import org.igv.event.IGVEventBus;
+import org.igv.event.IGVEventObserver;
 import org.igv.prefs.Constants;
 import org.igv.prefs.IGVPreferences;
+import org.igv.prefs.PreferencesChangeEvent;
 import org.igv.prefs.PreferencesManager;
 import org.igv.track.Track;
 import org.igv.ui.IGV;
@@ -33,11 +37,19 @@ import java.util.List;
  * the divider walks upward through siblings to find the nearest visible pane. If no
  * visible pane exists above, the divider hides itself.
  */
-public class TrackPanelDivider extends JPanel {
+public class TrackPanelDivider extends JPanel implements IGVEventObserver {
 
-    /** Height of the visible border between tracks, read fresh from Constants.TRACK_BORDER_HEIGHT (a RESTART_KEY - changing it takes effect on next launch, matching BACKGROUND_COLOR's precedent). */
+    /** Height of the visible border between tracks, read fresh from Constants.TRACK_BORDER_HEIGHT on every layout pass - see the PreferencesChangeEvent handling below for what forces a re-layout after a Preferences change. */
     public static int getDividerHeight() {
         return Math.max(0, PreferencesManager.getPreferences().getAsInt(Constants.TRACK_BORDER_HEIGHT));
+    }
+
+    private static Color computeBorderColor() {
+        boolean darkMode = Globals.isDarkMode();
+        IGVPreferences prefs = PreferencesManager.getPreferences();
+        return darkMode && !prefs.hasExplicitValue(Constants.TRACK_BORDER_COLOR)
+                ? new Color(200, 200, 200)
+                : prefs.getAsColor(Constants.TRACK_BORDER_COLOR);
     }
 
     /**
@@ -56,11 +68,8 @@ public class TrackPanelDivider extends JPanel {
         this.abovePane = abovePane;
 
         setCursor(Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR));
-        boolean darkMode = Globals.isDarkMode();
-        IGVPreferences prefs = PreferencesManager.getPreferences();
-        setBackground(darkMode && !prefs.hasExplicitValue(Constants.TRACK_BORDER_COLOR)
-                ? new Color(200, 200, 200)
-                : prefs.getAsColor(Constants.TRACK_BORDER_COLOR));
+        setBackground(computeBorderColor());
+        IGVEventBus.getInstance().subscribe(PreferencesChangeEvent.class, this);
 
         MouseAdapter mouseAdapter = new MouseAdapter() {
             @Override
@@ -105,6 +114,21 @@ public class TrackPanelDivider extends JPanel {
                 handleTrackPanelDrop(dtde);
             }
         }, true);
+    }
+
+    /**
+     * Picks up a Constants.TRACK_BORDER_COLOR/TRACK_BORDER_HEIGHT change with no restart needed:
+     * refreshes the background color directly, and calls revalidate() so the layout manager
+     * re-queries getPreferredSize/MinimumSize/MaximumSize (which already read the height fresh -
+     * a plain repaint() alone would not re-run layout, so the new height would never take effect).
+     */
+    @Override
+    public void receiveEvent(IGVEvent event) {
+        if (event instanceof PreferencesChangeEvent) {
+            setBackground(computeBorderColor());
+            revalidate();
+            repaint();
+        }
     }
 
     /**

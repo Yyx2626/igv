@@ -117,11 +117,17 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
 
         super.paintComponent(g);
 
-        // Explicitly fill background - JComponent without UI delegate doesn't do this automatically
+        // Explicitly fill background - JComponent without UI delegate doesn't do this automatically.
+        // Read Constants.BACKGROUND_COLOR fresh (not the cached getBackground() from construction
+        // time) so a Preferences change is reflected on the very next repaint, no restart needed -
+        // mirrors TrackNamePanel's own live background-color read.
         Graphics2D graphics2D = (Graphics2D) g;
         Rectangle clip = graphics2D.getClipBounds();
         if (clip != null) {
-            graphics2D.setColor(getBackground());
+            Color background = darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.BACKGROUND_COLOR)
+                    ? UIManager.getColor("Panel.background")
+                    : PreferencesManager.getPreferences().getAsColor(Constants.BACKGROUND_COLOR);
+            graphics2D.setColor(background);
             graphics2D.fillRect(clip.x, clip.y, clip.width, clip.height);
         }
         final Rectangle visibleRect = getVisibleRect();

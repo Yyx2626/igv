@@ -19,7 +19,7 @@ if defined BundledJdk if exist %BatchPath%%BundledJdk%\bin\javaw.exe (
 )
 
 if exist "%USERPROFILE%\.igv\java_arguments" (
-  start %JAVA_CMD% -showversion --module-path=%BatchPath%\lib -Xmx1500m @%BatchPath%\igv.args @"%USERPROFILE%\.igv\java_arguments" --module=org.igv/org.igv.tools.IgvTools gui
+  start %JAVA_CMD% -showversion -Xmx1500m @%BatchPath%\igv.args @"%USERPROFILE%\.igv\java_arguments" -cp "%BatchPath%\lib\*" org.igv.tools.IgvTools gui
 ) else (
-  start %JAVA_CMD% -showversion --module-path=%BatchPath%\lib -Xmx1500m @%BatchPath%\igv.args --module=org.igv/org.igv.tools.IgvTools gui
+  start %JAVA_CMD% -showversion -Xmx1500m @%BatchPath%\igv.args -cp "%BatchPath%\lib\*" org.igv.tools.IgvTools gui
 )
