@@ -1,7 +1,10 @@
 package org.igv.ui.panel;
 
+import org.igv.Globals;
 import org.igv.event.IGVEventBus;
 import org.igv.event.TrackSelectionEvent;
+import org.igv.prefs.Constants;
+import org.igv.prefs.PreferencesManager;
 import org.igv.track.Track;
 import org.igv.ui.GlobalKeyDispatcher;
 import org.igv.ui.IGV;
@@ -40,13 +43,11 @@ public class TrackSelectionPanel extends JPanel {
 
     public TrackSelectionPanel(TrackPanel trackPanel) {
         this.trackPanel = trackPanel;
-        setBackground(Color.WHITE);
         setPreferredSize(new Dimension(SELECTION_PANEL_WIDTH, 0));
         setMinimumSize(new Dimension(SELECTION_PANEL_WIDTH, 0));
         setLayout(new GridBagLayout());
 
         checkBox = new JCheckBox();
-        checkBox.setBackground(Color.WHITE);
         checkBox.setOpaque(true);
 
         // NOTE: an ActionListener on this checkbox never fired in testing (root cause
@@ -136,6 +137,19 @@ public class TrackSelectionPanel extends JPanel {
         if (checkBox != null) {
             checkBox.setBackground(bg);
         }
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        boolean darkMode = Globals.isDarkMode();
+        Track track = getTrack();
+        Color override = track == null ? null : track.getBackgroundColorOverride();
+        Color background = override != null ? override
+                : darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.TRACK_BACKGROUND_COLOR)
+                ? UIManager.getColor("Panel.background")
+                : PreferencesManager.getPreferences().getAsColor(Constants.TRACK_BACKGROUND_COLOR);
+        setBackground(background);
+        super.paintComponent(g);
     }
 
     public JCheckBox getCheckBox() {

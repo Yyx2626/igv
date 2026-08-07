@@ -213,12 +213,14 @@ public abstract class XYPlotRenderer extends DataRenderer {
                 getBaselineGraphics(context, axisDefinition).drawLine((int) x, baseY, (int) maxX, baseY);
             }
 
-            IGVPreferences prefs = PreferencesManager.getPreferences();
-
-            Color altColor = track.getAltColor();
+            // Default to lightGray, not the track's own color: matching-color mid lines are
+            // easy to mistake for actual data (especially since a track's altColor commonly
+            // defaults to the same as its main color), and are hard to see against the track's
+            // own bars at all. Users can still explicitly opt into track-colored mid lines via
+            // the color swatch in the Data Range dialog (DataRange.midlineColor).
             final Color borderColor = axisDefinition.getMidlineColor() != null
                     ? axisDefinition.getMidlineColor()
-                    : getBorderColor(track, prefs, altColor);
+                    : Color.lightGray;
             Graphics2D borderGraphics = context.getGraphic2DForColor(borderColor);
 
             // Draw the baseline -- todo, this is a wig track option?

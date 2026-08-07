@@ -1,5 +1,9 @@
 package org.igv.ui.panel;
 
+import org.igv.Globals;
+import org.igv.prefs.Constants;
+import org.igv.prefs.PreferencesManager;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
@@ -18,7 +22,6 @@ public class DragHandlePanel extends JPanel {
 
     public DragHandlePanel(TrackPanel trackPanel) {
         this.trackPanel = trackPanel;
-        setBackground(Color.WHITE);
         setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
         setPreferredSize(new Dimension(DRAG_HANDLE_WIDTH, 0));
         setMinimumSize(new Dimension(DRAG_HANDLE_WIDTH, 0));
@@ -54,6 +57,13 @@ public class DragHandlePanel extends JPanel {
 
     @Override
     protected void paintComponent(Graphics g) {
+        boolean darkMode = Globals.isDarkMode();
+        Color override = trackPanel.getTrack() == null ? null : trackPanel.getTrack().getBackgroundColorOverride();
+        Color background = override != null ? override
+                : darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.TRACK_BACKGROUND_COLOR)
+                ? UIManager.getColor("Panel.background")
+                : PreferencesManager.getPreferences().getAsColor(Constants.TRACK_BACKGROUND_COLOR);
+        setBackground(background);
         super.paintComponent(g);
 
         Graphics2D g2d = (Graphics2D) g.create();

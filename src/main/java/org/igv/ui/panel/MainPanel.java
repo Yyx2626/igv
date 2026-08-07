@@ -252,9 +252,30 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
         groupTabsPanel = new GroupTabsPanel();
         add(groupTabsPanel, BorderLayout.SOUTH);
 
-        setBackground(PreferencesManager.getPreferences().getAsColor(BACKGROUND_COLOR));
+        setBackground(computeGeneralBackground());
+        // trackPanelScrollPane's JViewport has no background of its own by default (it just
+        // shows the look-and-feel's plain Viewport.background) - it was never wired to
+        // Constants.BACKGROUND_COLOR at all, unlike every other "general background" consumer,
+        // which is why the empty space below the last track (when the viewport is taller than
+        // the track content - see the comment above on trackPanelScrollPane.getViewport()) never
+        // reflected this preference, with or without a restart.
+        trackPanelScrollPane.getViewport().setBackground(computeGeneralBackground());
 
+    }
 
+    private Color computeGeneralBackground() {
+        boolean darkMode = Globals.isDarkMode();
+        return darkMode && !PreferencesManager.getPreferences().hasExplicitValue(BACKGROUND_COLOR)
+                ? UIManager.getColor("Panel.background")
+                : PreferencesManager.getPreferences().getAsColor(BACKGROUND_COLOR);
+    }
+
+    @Override
+    protected void paintComponent(Graphics g) {
+        Color background = computeGeneralBackground();
+        setBackground(background);
+        trackPanelScrollPane.getViewport().setBackground(background);
+        super.paintComponent(g);
     }
 
     /**

@@ -41,10 +41,19 @@ import java.util.List;
  */
 public class TrackPanelDivider extends JPanel implements IGVEventObserver {
 
-    /** Global default height, read fresh from Constants.TRACK_BORDER_HEIGHT on every layout pass - see the PreferencesChangeEvent handling below for what forces a re-layout after a Preferences change. */
+    /**
+     * Minimum Swing component height (and mouse hit-testable area) for this divider,
+     * regardless of the configured visual border height. Decouples "can this divider be
+     * dragged/right-clicked" from "how many pixels are painted in the border color" - a
+     * visual height of 0 (or 1) still gets this much real component height, but only its own
+     * getVisualBorderHeight() worth of that is actually painted in the border color; the rest
+     * is painted with computeBlendBackground() so it reads as "no border" rather than a gap.
+     */
+    private static final int MIN_HIT_HEIGHT = 4;
+
+    /** Global default visual height, read fresh from Constants.TRACK_BORDER_HEIGHT on every layout pass - see the PreferencesChangeEvent handling below for what forces a re-layout after a Preferences change. */
     public static int getGlobalDividerHeight() {
-        // Minimum 1, not 0: a 0-height divider can never be dragged or right-clicked.
-        return Math.max(1, PreferencesManager.getPreferences().getAsInt(Constants.TRACK_BORDER_HEIGHT));
+        return Math.max(0, PreferencesManager.getPreferences().getAsInt(Constants.TRACK_BORDER_HEIGHT));
     }
 
     private static Color computeGlobalBorderColor() {
@@ -56,20 +65,45 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
     }
 
     /**
-     * This divider's own effective height: the above track's per-track override
+     * This divider's own effective VISUAL height (how many pixels get painted in the border
+     * color, top-aligned against the track above) - the above track's per-track override
      * (Track.getBorderHeightOverride(), set via this divider's own right-click menu) if
-     * present, otherwise the global Constants.TRACK_BORDER_HEIGHT preference.
+     * present, otherwise the global Constants.TRACK_BORDER_HEIGHT preference. 0 is valid here
+     * (no visible border at all) - see MIN_HIT_HEIGHT for why the component itself never
+     * actually shrinks to 0.
      */
-    private int getDividerHeight() {
+    private int getVisualBorderHeight() {
         Track track = getOverrideTrack();
         Integer override = track == null ? null : track.getBorderHeightOverride();
-        return override != null ? Math.max(1, override) : getGlobalDividerHeight();
+        return Math.max(0, override != null ? override : getGlobalDividerHeight());
+    }
+
+    /** Actual Swing component height: at least MIN_HIT_HEIGHT, so drag/right-click always work even when getVisualBorderHeight() is 0. */
+    private int getComponentHeight() {
+        return Math.max(getVisualBorderHeight(), MIN_HIT_HEIGHT);
     }
 
     private Color computeBorderColor() {
         Track track = getOverrideTrack();
         Color override = track == null ? null : track.getBorderColorOverride();
         return override != null ? override : computeGlobalBorderColor();
+    }
+
+    /**
+     * Fill color for whatever part of this divider's (at-least-MIN_HIT_HEIGHT) component
+     * area isn't covered by the actual border-color strip, so an unconfigured/zero-height
+     * border reads as "no border" instead of a visible gap - the same background resolution
+     * DataPanel uses for the track immediately above.
+     */
+    private Color computeBlendBackground() {
+        Track track = getOverrideTrack();
+        Color override = track == null ? null : track.getBackgroundColorOverride();
+        if (override != null) return override;
+        boolean darkMode = Globals.isDarkMode();
+        IGVPreferences prefs = PreferencesManager.getPreferences();
+        return darkMode && !prefs.hasExplicitValue(Constants.TRACK_BACKGROUND_COLOR)
+                ? UIManager.getColor("Panel.background")
+                : prefs.getAsColor(Constants.TRACK_BACKGROUND_COLOR);
     }
 
     /**
@@ -172,7 +206,7 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
             Integer current = track.getBorderHeightOverride() != null ? track.getBorderHeightOverride() : getGlobalDividerHeight();
             Integer value = TrackMenuUtils.getIntegerInput("Border height (pixels)", current);
             if (value != null) {
-                track.setBorderHeightOverride(Math.max(1, value));
+                track.setBorderHeightOverride(Math.max(0, value));
                 revalidate();
                 repaint();
             }
@@ -366,19 +400,19 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
 
     @Override
     public Dimension getPreferredSize() {
-        int h = shouldBeVisible() ? getDividerHeight() : 0;
+        int h = shouldBeVisible() ? getComponentHeight() : 0;
         return new Dimension(Integer.MAX_VALUE, h);
     }
 
     @Override
     public Dimension getMinimumSize() {
-        int h = shouldBeVisible() ? getDividerHeight() : 0;
+        int h = shouldBeVisible() ? getComponentHeight() : 0;
         return new Dimension(0, h);
     }
 
     @Override
     public Dimension getMaximumSize() {
-        int h = shouldBeVisible() ? getDividerHeight() : 0;
+        int h = shouldBeVisible() ? getComponentHeight() : 0;
         return new Dimension(Integer.MAX_VALUE, h);
     }
 
@@ -386,20 +420,22 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
     protected void paintComponent(Graphics g) {
         if (!shouldBeVisible()) return;
 
-        super.paintComponent(g);
+        // Two-layer fill, not a single super.paintComponent()/getBackground() fill: the
+        // component itself is always at least MIN_HIT_HEIGHT tall (for dragging/right-click),
+        // but only the configured getVisualBorderHeight() worth of that - top-aligned, flush
+        // against the track above - is actually painted in the border color. Any remaining
+        // pixels are painted with computeBlendBackground() so a 0-height border reads as "no
+        // border" instead of a visible gap of some other color.
+        int visualHeight = getVisualBorderHeight();
+        int componentHeight = getHeight();
 
-        Graphics2D g2d = (Graphics2D) g.create();
-        int h = getHeight();
-        int centerY = h / 2;
+        g.setColor(computeBlendBackground());
+        g.fillRect(0, 0, getWidth(), componentHeight);
 
-        int npWidth = getNamePanelWidth();
-        int lineWidth = npWidth > 0 ? npWidth : getWidth();
-
-        // Draw a subtle grip line across the name panel region
-        // g2d.setColor(Globals.isDarkMode() ? new Color(120, 120, 120) : new Color(180, 180, 180));
-        // g2d.drawLine(0, centerY, lineWidth, centerY);
-
-        g2d.dispose();
+        if (visualHeight > 0) {
+            g.setColor(computeBorderColor());
+            g.fillRect(0, 0, getWidth(), Math.min(visualHeight, componentHeight));
+        }
     }
 }
 

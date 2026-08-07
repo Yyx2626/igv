@@ -254,9 +254,7 @@ public class Main {
             }
         });
 
-        log.info("STARTUP CHECKPOINT: before initializeLookAndFeel()");
         initializeLookAndFeel();
-        log.info("STARTUP CHECKPOINT: after initializeLookAndFeel()");
 
         // Optional arguments
         if (igvArgs.getPropertyOverrides() != null) {
@@ -272,12 +270,9 @@ public class Main {
         SeekableStreamFactory.setInstance(IGVSeekableStreamFactory.getInstance());
 
         // Start IGV's UI itself (frame) and other components
-        log.info("STARTUP CHECKPOINT: before IGV.createInstance()");
         IGV igv = IGV.createInstance(frame, igvArgs);
-        log.info("STARTUP CHECKPOINT: after IGV.createInstance(), before igv.startUp() (actual work runs async on a background thread after this)");
 
         igv.startUp(igvArgs);
-        log.info("STARTUP CHECKPOINT: after igv.startUp() call returns (this returns immediately - watch for the StartupRunnable checkpoints next)");
 
         // TODO Should this be done here?  Will this step on other key dispatchers?
         KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(GlobalKeyDispatcher.getInstance());

@@ -1508,14 +1508,11 @@ public class IGV implements IGVEventObserver {
         @Override
         public void run() {
 
-            log.info("STARTUP CHECKPOINT: StartupRunnable.run() begin");
             final IGVPreferences preferences = PreferencesManager.getPreferences();
 
             // Start CommandsServer **before** loading the initial genome, as credentials might need to be set for
             // privately hosted genomes.
-            log.info("STARTUP CHECKPOINT: before startCommandsServer()");
             startCommandsServer(igvArgs, preferences);
-            log.info("STARTUP CHECKPOINT: after startCommandsServer()");
 
             UIUtilities.invokeAndWaitOnEventThread(() -> {
                 mainFrame.setIconImage(getIconImage());
@@ -1524,7 +1521,6 @@ public class IGV implements IGVEventObserver {
                 }
                 mainFrame.setVisible(true);
             });
-            log.info("STARTUP CHECKPOINT: main frame set visible");
 
             // Load the initial genome.
             final boolean runningBatch = igvArgs.getBatchFile() != null;
@@ -1568,14 +1564,12 @@ public class IGV implements IGVEventObserver {
                 // If we're not loading a session file, attempt to load a default genome file
                 if (igvArgs.getSessionFile() == null && !loadAutosave && !genomeLoaded) {
                     String genomeId = preferences.getDefaultGenome();
-                    log.info("STARTUP CHECKPOINT: before loading default genome '" + genomeId + "'");
                     try {
                         genomeLoaded = GenomeManager.getInstance().loadGenomeById(genomeId);
                     } catch (Exception e) {
                         MessageUtils.showErrorMessage("Error loading genome " + genomeId + "<br/>" + e.getMessage(), e);
                         genomeLoaded = false;
                     }
-                    log.info("STARTUP CHECKPOINT: after loading default genome '" + genomeId + "', loaded=" + genomeLoaded);
 
                     if (!genomeLoaded) {
                         Genome genome = Genome.NULL_GENOME;
@@ -1722,7 +1716,6 @@ public class IGV implements IGVEventObserver {
             synchronized (IGV.getInstance()) {
                 IGV.getInstance().notifyAll();
             }
-            log.info("STARTUP CHECKPOINT: StartupRunnable.run() end");
         }
 
 
