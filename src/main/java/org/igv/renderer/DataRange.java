@@ -147,6 +147,14 @@ public class DataRange {
         return new DataRange(min, mid, max, drawBaseline, isLog);
     }
 
+    /** Independent copy - callers that hand a DataRange to more than one track must not let them share the same mutable instance. */
+    public DataRange copy() {
+        DataRange dr = new DataRange(minimum, baseline, maximum, drawBaseline, isLog());
+        dr.flipAxis = this.flipAxis;
+        dr.midlineColor = this.midlineColor;
+        return dr;
+    }
+
     public Type getType() {
         return type;
     }

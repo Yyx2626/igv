@@ -53,7 +53,12 @@ public class AverageErrorBarOptionsDialog extends IGVDialog {
         JRadioButton minButton = new JRadioButton("Min", defaultWindowFunction == WindowFunction.min);
         JRadioButton meanButton = new JRadioButton("Mean", defaultWindowFunction == WindowFunction.mean);
         JRadioButton maxButton = new JRadioButton("Max", defaultWindowFunction == WindowFunction.max);
-        JRadioButton absMaxButton = new JRadioButton("Absolute Max", defaultWindowFunction == WindowFunction.absoluteMax);
+        // Labeled "None" (not "Absolute Max") to match the terminology a member's own
+        // Windowing Function menu uses - WindowFunction.absoluteMax is what a member's own
+        // "None" windowing already looks like once bigwig zoom-pyramid summaries kick in at
+        // low zoom (see the class javadoc), so presenting it under the familiar "None" name
+        // here keeps the two menus consistent even though the underlying enum value differs.
+        JRadioButton absMaxButton = new JRadioButton("None", defaultWindowFunction == WindowFunction.absoluteMax);
         wfGroup.add(minButton);
         wfGroup.add(meanButton);
         wfGroup.add(maxButton);

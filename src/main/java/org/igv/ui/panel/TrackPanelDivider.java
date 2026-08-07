@@ -42,20 +42,11 @@ import java.util.List;
 public class TrackPanelDivider extends JPanel implements IGVEventObserver {
 
     /**
-     * Minimum Swing component height (and mouse hit-testable area) for this divider,
-     * regardless of the configured visual border height. Two separate attempts at a
-     * genuinely zero-footprint divider (a transparent overlay floating in a JLayeredPane,
-     * absolutely positioned to straddle this divider's boundary) each broke drag-and-drop
-     * file loading in a different way (first: no response at all; second, after fixing the
-     * DnD action constant: only some of several simultaneously-dropped files actually got
-     * added to the track panel, and then further drops silently did nothing) - both
-     * un-debuggable further without live interactive testing, so this stays a plain
-     * flow-participating component with a small minimum height instead. Kept deliberately
-     * small (2, not the original 4) to minimize the break it causes in per-track vertical
-     * elements (e.g. the Y-axis boundary line) that assume their own track's top/bottom edge
-     * is the only gap - see computeBlendBackground().
+     * How many pixels of extra hit-tolerance {@link DividerHoverOverlay} adds on each side of
+     * this divider's own (possibly zero) height - see that class. Kept here so both classes
+     * agree on one value without a runtime lookup.
      */
-    private static final int MIN_HIT_HEIGHT = 2;
+    public static final int HOVER_MARGIN = 3;
 
     /** Global default visual height, read fresh from Constants.TRACK_BORDER_HEIGHT on every layout pass - see the PreferencesChangeEvent handling below for what forces a re-layout after a Preferences change. */
     public static int getGlobalDividerHeight() {
@@ -71,12 +62,14 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
     }
 
     /**
-     * This divider's own effective VISUAL height (how many pixels get painted in the border
-     * color, top-aligned against the track above) - the above track's per-track override
+     * This divider's own effective height - the above track's per-track override
      * (Track.getBorderHeightOverride(), set via this divider's own right-click menu) if
-     * present, otherwise the global Constants.TRACK_BORDER_HEIGHT preference. 0 is valid here
-     * (no visible border at all) - see MIN_HIT_HEIGHT for why the component itself never
-     * actually shrinks to 0.
+     * present, otherwise the global Constants.TRACK_BORDER_HEIGHT preference. 0 is valid and
+     * means a genuinely zero-height divider: the tracks above/below sit flush against each
+     * other with no reserved space at all - see DividerHoverOverlay for how drag/right-click
+     * still work at height 0 (a separate, transparent, absolutely-positioned component
+     * straddles this divider's position purely for hit-testing; this class no longer pads
+     * its own layout size to stay clickable).
      */
     private int getVisualBorderHeight() {
         Track track = getOverrideTrack();
@@ -84,32 +77,10 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
         return Math.max(0, override != null ? override : getGlobalDividerHeight());
     }
 
-    /** Actual Swing component height: at least MIN_HIT_HEIGHT, so drag/right-click always work even when getVisualBorderHeight() is 0. */
-    private int getComponentHeight() {
-        return Math.max(getVisualBorderHeight(), MIN_HIT_HEIGHT);
-    }
-
     private Color computeBorderColor() {
         Track track = getOverrideTrack();
         Color override = track == null ? null : track.getBorderColorOverride();
         return override != null ? override : computeGlobalBorderColor();
-    }
-
-    /**
-     * Fill color for whatever part of this divider's (at-least-MIN_HIT_HEIGHT) component
-     * area isn't covered by the actual border-color strip, so an unconfigured/zero-height
-     * border reads as "no border" instead of a visible gap - the same background resolution
-     * DataPanel uses for the track immediately above.
-     */
-    private Color computeBlendBackground() {
-        Track track = getOverrideTrack();
-        Color override = track == null ? null : track.getBackgroundColorOverride();
-        if (override != null) return override;
-        boolean darkMode = Globals.isDarkMode();
-        IGVPreferences prefs = PreferencesManager.getPreferences();
-        return darkMode && !prefs.hasExplicitValue(Constants.TRACK_BACKGROUND_COLOR)
-                ? UIManager.getColor("Panel.background")
-                : prefs.getAsColor(Constants.TRACK_BACKGROUND_COLOR);
     }
 
     /**
@@ -128,6 +99,18 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
 
     private int dragStartY;
     private int originalAboveHeight;
+    /**
+     * True only between a genuine resize-drag's mousePressed and its mouseReleased. Guards
+     * mouseDragged, which otherwise fires for *any* held mouse button, not just the one that
+     * actually started a resize: on macOS a right-click's isPopupTrigger() is already true at
+     * mousePressed, which returns early without touching dragStartY/originalAboveHeight - if
+     * the user then drags without releasing the right button, mouseDragged would compute a
+     * delta from whatever those two fields last held (0, or a stale value from an earlier
+     * unrelated drag), snapping the track above to a huge spurious height. This is that bug's
+     * actual root cause - unrelated to the DividerHoverOverlay retargeting issue fixed
+     * earlier for the same symptom, which this codebase does still need for other reasons.
+     */
+    private boolean resizing = false;
 
     /**
      * @param abovePane the scroll pane above this divider, or {@code null} if none
@@ -147,6 +130,12 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
                     showPopupMenu(e);
                     return;
                 }
+                if (!SwingUtilities.isLeftMouseButton(e)) {
+                    // Not a popup trigger on this platform/timing, but also not the button a
+                    // resize drag should ever start from - e.g. a right-click whose
+                    // isPopupTrigger() is only true on release, not press, on some platforms.
+                    return;
+                }
                 TrackPanelScrollPane effective = getEffectiveAbovePane();
                 if (effective == null) return;
                 if (PreferencesManager.getPreferences().getAsBoolean(Constants.SHOW_SINGLE_TRACK_PANE_KEY)) {
@@ -154,10 +143,12 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
                 }
                 dragStartY = e.getYOnScreen();
                 originalAboveHeight = getTrackHeight(effective);
+                resizing = true;
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
+                resizing = false;
                 if (e.isPopupTrigger()) {
                     showPopupMenu(e);
                 }
@@ -165,6 +156,7 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
 
             @Override
             public void mouseDragged(MouseEvent e) {
+                if (!resizing) return;
                 TrackPanelScrollPane effective = getEffectiveAbovePane();
                 if (effective == null) return;
                 if (PreferencesManager.getPreferences().getAsBoolean(Constants.SHOW_SINGLE_TRACK_PANE_KEY)) {
@@ -231,8 +223,11 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
         });
         menu.add(setColorItem);
 
+        // Separator groups the two "Set..." actions above from the two "Unset..." actions
+        // below, rather than sitting between the two Unset items.
+        menu.addSeparator();
+
         if (track.getBorderHeightOverride() != null || track.getBorderColorOverride() != null) {
-            menu.addSeparator();
             JMenuItem unsetItem = new JMenuItem("Unset Border Height/Color");
             unsetItem.addActionListener(evt -> {
                 track.setBorderHeightOverride(null);
@@ -243,6 +238,24 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
             });
             menu.add(unsetItem);
         }
+
+        // Always present, on every divider - a divider whose own per-track height override is
+        // 0 has no area to be right-clicked at all, so this needs to be reachable from ANY
+        // OTHER still-clickable divider (or from the global height=0 case, from whichever
+        // divider ends up with a border high enough to click) as a way back, not just from the
+        // specific divider that got stuck.
+        JMenuItem unsetAllItem = new JMenuItem("Unset All Borders");
+        unsetAllItem.setToolTipText("Clear the border height/color override on every track, in case a track's own override was set to 0 and its divider is no longer clickable to fix directly.");
+        unsetAllItem.addActionListener(evt -> {
+            for (Track t : IGV.getInstance().getAllTracks()) {
+                t.setBorderHeightOverride(null);
+                t.setBorderColorOverride(null);
+            }
+            setBackground(computeBorderColor());
+            IGV.getInstance().revalidateTrackPanels();
+            IGV.getInstance().repaint();
+        });
+        menu.add(unsetAllItem);
 
         menu.show(this, e.getX(), e.getY());
     }
@@ -267,7 +280,7 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
      * placed immediately after the track above this divider (i.e. at the divider's
      * position in the track list).
      */
-    private void handleTrackPanelDrop(DropTargetDropEvent dtde) {
+    void handleTrackPanelDrop(DropTargetDropEvent dtde) {
         try {
             DataFlavor trackPanelFlavor = TrackPanel.getTrackPanelDataFlavor();
             Transferable transferable = dtde.getTransferable();
@@ -290,8 +303,16 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
             MainPanel mainPanel = IGV.getInstance().getMainPanel();
             List<TrackPanel> panels = mainPanel.getTrackPanels();
 
-            // Find the track panel above this divider
-            TrackPanel aboveTrackPanel = abovePane != null ? abovePane.getTrackPanel() : null;
+            // Determined from the drop's own current screen position (see
+            // MainPanel.findTrackPanelAbovePoint) rather than this.abovePane: a drop reaching
+            // this method through DividerHoverOverlay's reused/retargeted pool can land on a
+            // TrackPanelDivider instance MainPanel.rebuildDividers() already discarded, whose
+            // cached abovePane no longer matches any panel in the current layout - that used
+            // to silently drop the dragged track out of the reordered list below instead of
+            // reinserting it. The drop point's own on-screen position is unaffected by any of
+            // that, so deriving the answer from it instead can't go stale the same way.
+            TrackPanel aboveTrackPanel = mainPanel.findTrackPanelAbovePoint(
+                    dtde.getDropTargetContext().getComponent(), dtde.getLocation());
 
             // If dropped right back next to itself, do nothing
             if (droppedPanel == aboveTrackPanel) {
@@ -308,12 +329,10 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
                     orderedPanes.add(droppedPanel.getScrollPane()); // insert after abovePanel
                 }
             }
-            // If abovePane is null (divider is at top), insert at position 0
-            if (aboveTrackPanel == null) {
-                TrackPanelScrollPane droppedSp = droppedPanel.getScrollPane();
-                if (!orderedPanes.contains(droppedSp)) {
-                    orderedPanes.add(0, droppedSp);
-                }
+            // If aboveTrackPanel is null (dropped above every current panel), insert at position 0
+            TrackPanelScrollPane droppedSp = droppedPanel.getScrollPane();
+            if (!orderedPanes.contains(droppedSp)) {
+                orderedPanes.add(0, droppedSp);
             }
 
             mainPanel.reorderPanels(orderedPanes);
@@ -406,42 +425,29 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
 
     @Override
     public Dimension getPreferredSize() {
-        int h = shouldBeVisible() ? getComponentHeight() : 0;
+        int h = shouldBeVisible() ? getVisualBorderHeight() : 0;
         return new Dimension(Integer.MAX_VALUE, h);
     }
 
     @Override
     public Dimension getMinimumSize() {
-        int h = shouldBeVisible() ? getComponentHeight() : 0;
+        int h = shouldBeVisible() ? getVisualBorderHeight() : 0;
         return new Dimension(0, h);
     }
 
     @Override
     public Dimension getMaximumSize() {
-        int h = shouldBeVisible() ? getComponentHeight() : 0;
+        int h = shouldBeVisible() ? getVisualBorderHeight() : 0;
         return new Dimension(Integer.MAX_VALUE, h);
     }
 
     @Override
     protected void paintComponent(Graphics g) {
         if (!shouldBeVisible()) return;
-
-        // Two-layer fill, not a single super.paintComponent()/getBackground() fill: the
-        // component itself is always at least MIN_HIT_HEIGHT tall (for dragging/right-click),
-        // but only the configured getVisualBorderHeight() worth of that - top-aligned, flush
-        // against the track above - is actually painted in the border color. Any remaining
-        // pixels are painted with computeBlendBackground() so a 0-height border reads as "no
-        // border" instead of a visible gap of some other color.
         int visualHeight = getVisualBorderHeight();
-        int componentHeight = getHeight();
-
-        g.setColor(computeBlendBackground());
-        g.fillRect(0, 0, getWidth(), componentHeight);
-
-        if (visualHeight > 0) {
-            g.setColor(computeBorderColor());
-            g.fillRect(0, 0, getWidth(), Math.min(visualHeight, componentHeight));
-        }
+        if (visualHeight <= 0) return;
+        g.setColor(computeBorderColor());
+        g.fillRect(0, 0, getWidth(), Math.min(visualHeight, getHeight()));
     }
 }
 

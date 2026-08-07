@@ -478,17 +478,41 @@ public class TrackMenuUtils {
         items.add(new JPopupMenu.Separator());
         JMenuItem restoreItem = new JMenuItem(avgTracks.size() > 1 ? "Restore Original Tracks (each)" : "Restore Original Tracks");
         restoreItem.addActionListener(e -> {
+            List<Track> allRestoredMembers = new ArrayList<>();
             for (AverageErrorBarTrack avgTrack : avgTracks) {
-                long order = avgTrack.getOrder();
+                // See the matching comments in AverageErrorBarTrack's own "Restore Original
+                // Tracks" handler / MainPanel.computeOrderForCurrentPosition().
+                long order = IGV.getInstance().getMainPanel().computeOrderForCurrentPosition(avgTrack);
+                WindowFunction windowFunction = AverageErrorBarTrack.toMemberWindowFunction(avgTrack.getWindowFunction());
+                DataRange dataRange = avgTrack.getDataRange();
                 List<DataTrack> members = avgTrack.getMemberTracks();
                 for (Track member : members) {
                     member.setOrder(order);
+                    if (windowFunction != null) {
+                        member.setWindowFunction(windowFunction);
+                    }
+                    // Freeze the average's current (possibly autoscaled) range onto the
+                    // member rather than leaving its own autoScale on - see the matching
+                    // comment in AverageErrorBarTrack's own restore handler.
+                    member.setAutoScale(false);
+                    if (dataRange != null) {
+                        member.setDataRange(dataRange.copy());
+                    }
                 }
                 if (TrackPairing.isPaired(avgTrack)) {
                     TrackPairing.unpair(List.of(avgTrack), IGV.getInstance().getAllTracks());
                 }
                 IGV.getInstance().deleteTracks(List.of(avgTrack));
                 IGV.getInstance().addTracks(new ArrayList<>(members));
+                allRestoredMembers.addAll(members);
+            }
+            // Deferred until every avgTrack in this batch has been restored - see
+            // TrackPairing.reconcilePairingAfterRestore(): a member's original partner may
+            // be one of THIS batch's other avgTracks' members, still dormant (not yet a
+            // standalone track) until its own turn through the loop above completes.
+            List<Track> allTracks = IGV.getInstance().getAllTracks();
+            for (Track member : allRestoredMembers) {
+                TrackPairing.reconcilePairingAfterRestore(member, allTracks);
             }
             IGV.getInstance().repaint();
         });

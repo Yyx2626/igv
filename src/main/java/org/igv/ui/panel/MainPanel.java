@@ -215,7 +215,12 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
         // Custom panel that implements Scrollable to prevent viewport from stretching it
         trackPanelContainer = new ScrollableTrackContainer(this);
 
-        trackPanelScrollPane = new JScrollPane(trackPanelContainer);
+        // Wraps trackPanelContainer purely to host floating DividerHoverOverlay components -
+        // see TrackStackOverlayPane's javadoc. trackPanelContainer's own add/remove/reorder
+        // logic below is completely unaffected; this wrapper never manages its children.
+        TrackStackOverlayPane trackStackOverlayPane = new TrackStackOverlayPane(trackPanelContainer);
+
+        trackPanelScrollPane = new JScrollPane(trackStackOverlayPane);
         trackPanelScrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         trackPanelScrollPane.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
         trackPanelScrollPane.setBorder(createHeaderSeparatorBorder());
@@ -391,6 +396,108 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
         }
 
         movedTrack.setOrder(newOrder);
+    }
+
+    /**
+     * Computes an order value that sorts strictly between {@code referenceTrack}'s current
+     * previous and next neighbors, for inserting replacement tracks at the exact slot
+     * {@code referenceTrack} currently occupies (before it's removed) - e.g. "Restore
+     * Original Tracks" on an AverageErrorBarTrack, which needs its member tracks to land back
+     * where the average track was rather than wherever {@code referenceTrack.getOrder()}
+     * happens to be. That value can be stale (this codebase doesn't guarantee getOrder()
+     * always matches the track's current on-screen position) and, worse, addTrackPanel()
+     * silently treats a literal 0 as "never explicitly assigned" and appends to the bottom of
+     * the list instead of inserting there - deriving a fresh value from the *current* neighbors
+     * (and steering away from 0 the same way {@link #updateMovedTrackOrder} implicitly can, by
+     * using -1/+1 offsets) sidesteps both problems.
+     */
+    public long computeOrderForCurrentPosition(Track referenceTrack) {
+        List<TrackPanel> trackPanels = getTrackPanels();
+        int index = -1;
+        for (int i = 0; i < trackPanels.size(); i++) {
+            if (referenceTrack.equals(trackPanels.get(i).getTrack())) {
+                index = i;
+                break;
+            }
+        }
+        if (index < 0) {
+            return referenceTrack.getOrder();
+        }
+
+        long prevOrder = Globals.JS_MIN_SAFE_INTEGER;
+        long nextOrder = Globals.JS_MAX_SAFE_INTEGER;
+        if (index > 0) {
+            Track prevTrack = trackPanels.get(index - 1).getTrack();
+            if (prevTrack != null) {
+                prevOrder = prevTrack.getOrder();
+            }
+        }
+        if (index < trackPanels.size() - 1) {
+            Track nextTrack = trackPanels.get(index + 1).getTrack();
+            if (nextTrack != null) {
+                nextOrder = nextTrack.getOrder();
+            }
+        }
+
+        if (prevOrder == Globals.JS_MIN_SAFE_INTEGER && nextOrder == Globals.JS_MAX_SAFE_INTEGER) {
+            // referenceTrack is the only track in the panel - 0 is fine here since
+            // addTrackPanel() would compute the same value (getTrackPanels().size() == 0)
+            // once referenceTrack is actually removed.
+            return 0;
+        }
+
+        long newOrder;
+        if (prevOrder == Globals.JS_MIN_SAFE_INTEGER) {
+            newOrder = nextOrder - 1;
+        } else if (nextOrder == Globals.JS_MAX_SAFE_INTEGER) {
+            newOrder = prevOrder + 1;
+        } else {
+            long mid = prevOrder + (nextOrder - prevOrder) / 2;
+            newOrder = mid == prevOrder ? prevOrder + 1 : mid;
+        }
+        // Other tracks remain in the panel here, so - unlike the only-track case above - a
+        // literal 0 would trip addTrackPanel()'s "never explicitly assigned" fallback.
+        return newOrder == 0 ? -1 : newOrder;
+    }
+
+    /**
+     * Finds the track panel whose current on-screen bounds sit immediately above the given
+     * drop point, using the live layout rather than any cached divider/pane reference - see
+     * {@code TrackPanelDivider.handleTrackPanelDrop()}, which used to trust its own
+     * {@code abovePane} field (set once at construction) for this instead. That field is only
+     * as fresh as the specific {@code TrackPanelDivider} instance it lives on, but a drop
+     * reaching that method through {@link DividerHoverOverlay}'s reused/retargeted pool can be
+     * routed to an instance {@code MainPanel.rebuildDividers()} already discarded - whose
+     * {@code abovePane} then no longer matches any panel in the current layout - silently
+     * dropping the dragged track out of the reordered list entirely instead of reinserting it.
+     * {@code dropComponent}'s and every track panel's actual current on-screen position are
+     * unaffected by any of that bookkeeping, so deriving the answer from them instead is
+     * immune to it.
+     *
+     * @param dropComponent the component the DnD system delivered the drop event to (used only
+     *                       to translate dropPoint into this panel's coordinate space)
+     * @param dropPoint     the drop location, in dropComponent's own coordinate space
+     * @return the track panel whose scroll pane's vertical center is at or above the drop
+     *         point, or {@code null} if the drop point is above every current track panel
+     */
+    public TrackPanel findTrackPanelAbovePoint(Component dropComponent, Point dropPoint) {
+        if (dropComponent == null) {
+            return null;
+        }
+        Point inContainer = SwingUtilities.convertPoint(dropComponent, dropPoint, trackPanelContainer);
+        TrackPanel above = null;
+        for (Component c : trackPanelContainer.getComponents()) {
+            if (c instanceof TrackPanelScrollPane) {
+                TrackPanelScrollPane sp = (TrackPanelScrollPane) c;
+                Rectangle bounds = sp.getBounds();
+                if (bounds.y + bounds.height / 2 <= inContainer.y) {
+                    above = sp.getTrackPanel();
+                } else {
+                    break;
+                }
+            }
+        }
+        return above;
     }
 
     /**

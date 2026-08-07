@@ -7,6 +7,7 @@ import org.igv.feature.LocusScore;
 import org.igv.renderer.AverageErrorBarLineplotRenderer;
 import org.igv.renderer.AverageErrorBarPointsRenderer;
 import org.igv.renderer.AverageErrorBarRenderer;
+import org.igv.renderer.DataRange;
 import org.igv.renderer.ErrorBarStyle;
 import org.igv.renderer.XYPlotRenderer;
 import org.igv.ui.ErrorBarStyleDialog;
@@ -17,6 +18,7 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import javax.swing.ButtonGroup;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
@@ -102,6 +104,18 @@ public class AverageErrorBarTrack extends DataSourceTrack {
     public List<Component> getPopupMenuItems(TrackClickEvent te) {
         List<Component> items = new ArrayList<>(super.getPopupMenuItems(te));
 
+        // The generic "Windowing Function" section built by super.getPopupMenuItems() (via
+        // TrackMenuUtils.getDataMenuItems) labels every entry with WindowFunction's own
+        // display name, which is correct for a regular track but not here: getAvailableWindowFunctions()
+        // below only ever offers absoluteMax as the equivalent of "None" (see its javadoc),
+        // so relabel just that one entry to match, without touching the shared enum value
+        // itself (which regular tracks still need labeled "Absolute Maximum").
+        for (Component c : items) {
+            if (c instanceof JCheckBoxMenuItem && WindowFunction.absoluteMax.getValue().equals(((JCheckBoxMenuItem) c).getText())) {
+                ((JCheckBoxMenuItem) c).setText("None");
+            }
+        }
+
         items.add(new JPopupMenu.Separator());
 
         JMenu errorBarTypeMenu = new JMenu("Error Bar Type");
@@ -152,20 +166,98 @@ public class AverageErrorBarTrack extends DataSourceTrack {
         items.add(new JPopupMenu.Separator());
         JMenuItem restoreItem = new JMenuItem("Restore Original Tracks");
         restoreItem.addActionListener(e -> {
-            long order = getOrder();
+            // Derived from the current neighbors in the panel rather than trusting
+            // getOrder() directly - see MainPanel.computeOrderForCurrentPosition().
+            long order = IGV.getInstance().getMainPanel().computeOrderForCurrentPosition(this);
+            WindowFunction windowFunction = toMemberWindowFunction(getWindowFunction());
+            DataRange dataRange = getDataRange();
             for (Track member : memberTracks) {
                 member.setOrder(order);
+                // Members keep whatever WindowFunction/DataRange they had before being
+                // averaged for as long as the average track lives (AverageErrorBarDataSource
+                // only ever borrows a member's WindowFunction transiently, for one fetch, then
+                // restores it - see that class). Restoring adopts the average's own settings
+                // instead, since that's what the user was actually looking at just before
+                // asking to split it back apart.
+                if (windowFunction != null) {
+                    member.setWindowFunction(windowFunction);
+                }
+                // Freeze the average's current data range onto the member (even if the
+                // average got there via its own autoscale - getDataRange() reflects the
+                // latest computed range either way) rather than leaving the member's own
+                // autoScale on: a member left with autoScale=true (its state from before
+                // averaging) would otherwise recompute its *own* range from just its own
+                // values on the very next repaint, discarding what was just copied and
+                // potentially landing on a different scale than its former sibling members.
+                member.setAutoScale(false);
+                if (dataRange != null) {
+                    member.setDataRange(dataRange.copy());
+                }
             }
             if (TrackPairing.isPaired(this)) {
                 TrackPairing.unpair(List.of(this), IGV.getInstance().getAllTracks());
             }
             IGV.getInstance().deleteTracks(List.of(this));
             IGV.getInstance().addTracks(new ArrayList<>(memberTracks));
+            List<Track> allTracks = IGV.getInstance().getAllTracks();
+            for (Track member : memberTracks) {
+                TrackPairing.reconcilePairingAfterRestore(member, allTracks);
+            }
             IGV.getInstance().repaint();
         });
         items.add(restoreItem);
 
         return items;
+    }
+
+    /**
+     * The WindowFunction to give a restored member track, given the average track's own
+     * getWindowFunction() - unchanged unless it's {@code absoluteMax}, which this class only
+     * ever uses as the equivalent of "None" (see {@link #getPopupMenuItems} and
+     * {@code AverageErrorBarOptionsDialog}, both of which label it "None" for exactly this
+     * reason). A member restored back into a regular DataTrack should show "None" selected
+     * in its own Windowing Function menu, not "Absolute Maximum", to match what the average
+     * track appeared to be using. Static (rather than an instance method reading
+     * getWindowFunction() itself) so TrackMenuUtils's batch restore can share it.
+     */
+    public static WindowFunction toMemberWindowFunction(WindowFunction averageWindowFunction) {
+        return averageWindowFunction == WindowFunction.absoluteMax ? WindowFunction.none : averageWindowFunction;
+    }
+
+    /**
+     * Autoscale range, widened to the mean ± error bar extent rather than just the mean
+     * (DataTrack's own implementation only ever looks at {@code score.getScore()}, i.e. the
+     * plain mean - it has no notion of an error bar at all). Without this, autoscale clips
+     * the error bars right at the plot's min/max edge whenever they'd otherwise stick out
+     * past the range the mean values alone would need.
+     */
+    @Override
+    public Range getInViewRange(ReferenceFrame referenceFrame) {
+        List<LocusScore> scores = getInViewScores(referenceFrame);
+        if (scores == null || scores.isEmpty()) {
+            return null;
+        }
+        float min = Float.MAX_VALUE;
+        float max = -Float.MAX_VALUE;
+        for (LocusScore score : scores) {
+            float value = score.getScore();
+            if (Float.isNaN(value)) {
+                continue;
+            }
+            float err = 0;
+            if (errorBarType != ErrorBarType.NONE && score instanceof AverageErrorLocusScore) {
+                AverageErrorLocusScore es = (AverageErrorLocusScore) score;
+                if (es.getN() >= 2) {
+                    float e = errorBarType == ErrorBarType.SD ? es.getSd() : es.getSem();
+                    if (!Float.isNaN(e)) {
+                        err = e;
+                    }
+                }
+            }
+            min = Math.min(min, value - err);
+            max = Math.max(max, value + err);
+        }
+        return min > max ? null : new Range(min, max);
     }
 
     /**

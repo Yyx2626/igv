@@ -107,6 +107,46 @@ public class TrackPairing {
     }
 
     /**
+     * Called after a member track is restored out of an AverageErrorBarTrack (see
+     * "Restore Original Tracks" in AverageErrorBarTrack/TrackMenuUtils). A member keeps
+     * whatever pairId/PairRole it had *before* being averaged - averaging never touches it,
+     * since the member object itself is preserved unchanged for exactly this kind of
+     * restore - but by the time it comes back, that old relationship may no longer make
+     * sense:
+     * <ul>
+     *   <li>the original partner may still be dormant inside a *different*, not-yet-restored
+     *       AverageErrorBarTrack, so it isn't a currently-displayed track at all;</li>
+     *   <li>the original partner may since have been re-paired with some other track under a
+     *       fresh pairId, so it no longer shares this member's stale id either;</li>
+     *   <li>(defensively) more than one currently-displayed track could claim to share this
+     *       stale id, which shouldn't happen given pairId's normal 1:1 invariant, but isn't
+     *       safe to guess at if it does.</li>
+     * </ul>
+     * In all three cases the stale pairing is cleared rather than trusted. Otherwise - the
+     * partner genuinely still exists, standalone, and shares no one else's pairId - the pair
+     * is re-established via {@link #pair}, which recomputes top/bottom from current on-screen
+     * order; restoring both members to their original positions first makes that come out the
+     * same as their original relationship.
+     */
+    public static void reconcilePairingAfterRestore(Track member, Collection<Track> allTracks) {
+        if (member.getPairId() == null) {
+            return;
+        }
+        List<Track> candidates = new ArrayList<>();
+        for (Track other : allTracks) {
+            if (other != member && member.getPairId().equals(other.getPairId())) {
+                candidates.add(other);
+            }
+        }
+        if (candidates.size() != 1) {
+            member.removeAttribute(AttributeManager.PAIR_GROUP);
+            member.setPairRole(null);
+            return;
+        }
+        pair(member, candidates.get(0));
+    }
+
+    /**
      * Partition a selection into a "top" group (tracks with {@link PairRole#TOP}, plus
      * any unpaired tracks) and a "bottom" group (tracks with {@link PairRole#BOTTOM}).
      * Used both by the paired Data-Range dialog and by the Average-With-Error-Bar
