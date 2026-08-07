@@ -797,6 +797,10 @@ public class IGV implements IGVEventObserver {
         sessionReader.loadSession(inputStream, session, sessionPath);
 
         revalidateTrackPanels();
+        // Refresh GroupTabsPanel's per-group enabled/tooltip state, which otherwise only
+        // updates on a TrackSelectionEvent (posted by TrackGrouping's own mutators) and
+        // would show stale (disabled) buttons for groups restored from this session.
+        IGVEventBus.getInstance().post(new TrackSelectionEvent());
         return true;
     }
 

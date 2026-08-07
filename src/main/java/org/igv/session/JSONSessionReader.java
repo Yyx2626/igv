@@ -151,8 +151,8 @@ public class JSONSessionReader implements SessionReader {
                     JSONArray childTracksArray = trackJson.getJSONArray("tracks");
                     for (int j = 0; j < childTracksArray.length(); j++) {
                         JSONObject childTrackJson = childTracksArray.getJSONObject(j);
-                        if (childTrackJson.has("url")) {
-                            String url = resolvePath(childTrackJson.getString("url"));
+                        if (childTrackJson.has("url") || childTrackJson.has("path")) {
+                            String url = resolvePath(childTrackJson.has("url") ? childTrackJson.getString("url") : childTrackJson.getString("path"));
 
                             int futureIndex;
                             if (urlToFutureIndex.containsKey(url)) {
@@ -187,8 +187,8 @@ public class JSONSessionReader implements SessionReader {
                     JSONArray childTracksArray = trackJson.getJSONArray("tracks");
                     for (int j = 0; j < childTracksArray.length(); j++) {
                         JSONObject childTrackJson = childTracksArray.getJSONObject(j);
-                        if (childTrackJson.has("url")) {
-                            String url = resolvePath(childTrackJson.getString("url"));
+                        if (childTrackJson.has("url") || childTrackJson.has("path")) {
+                            String url = resolvePath(childTrackJson.has("url") ? childTrackJson.getString("url") : childTrackJson.getString("path"));
 
                             int futureIndex;
                             if (urlToFutureIndex.containsKey(url)) {
