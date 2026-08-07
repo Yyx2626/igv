@@ -69,9 +69,10 @@ public class TrackNamePanel extends TrackPanelComponent implements Paintable {
 
                 fontGraphics = (Graphics2D) g.create();
 
-                final Color backgroundColor = darkMode ?
-                        UIManager.getColor("Panel.background") :
-                        PreferencesManager.getPreferences().getAsColor(Constants.BACKGROUND_COLOR);
+                Color override = getTrack() == null ? null : getTrack().getBackgroundColorOverride();
+                final Color backgroundColor = override != null ? override
+                        : darkMode ? UIManager.getColor("Panel.background")
+                        : PreferencesManager.getPreferences().getAsColor(Constants.TRACK_BACKGROUND_COLOR);
                 fontGraphics.setBackground(backgroundColor);
                 fontGraphics.setColor(backgroundColor);
                 fontGraphics.fillRect(visibleRect.x, visibleRect.y, visibleRect.width, visibleRect.height);

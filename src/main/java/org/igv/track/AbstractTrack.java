@@ -88,6 +88,11 @@ public abstract class AbstractTrack implements Track {
     protected Color defaultColor;
     protected Color color = null;
     protected Color altColor = null;
+    /** Per-track override for Constants.TRACK_BACKGROUND_COLOR, or null to use the global preference. */
+    private Color backgroundColorOverride = null;
+    /** Per-track override for the divider drawn immediately below this track. */
+    private Integer borderHeightOverride = null;
+    private Color borderColorOverride = null;
 
     protected int visibilityWindow = VISIBILITY_WINDOW;
     private DisplayMode displayMode = DEFAULT_DISPLAY_MODE;
@@ -418,6 +423,36 @@ public abstract class AbstractTrack implements Track {
     @Override
     public void setPairId(String pairId) {
         this.pairId = pairId;
+    }
+
+    @Override
+    public Color getBackgroundColorOverride() {
+        return backgroundColorOverride;
+    }
+
+    @Override
+    public void setBackgroundColorOverride(Color color) {
+        this.backgroundColorOverride = color;
+    }
+
+    @Override
+    public Integer getBorderHeightOverride() {
+        return borderHeightOverride;
+    }
+
+    @Override
+    public void setBorderHeightOverride(Integer height) {
+        this.borderHeightOverride = height;
+    }
+
+    @Override
+    public Color getBorderColorOverride() {
+        return borderColorOverride;
+    }
+
+    @Override
+    public void setBorderColorOverride(Color color) {
+        this.borderColorOverride = color;
     }
 
     @Override
@@ -1372,6 +1407,17 @@ public abstract class AbstractTrack implements Track {
             jsonObject.put("pairRole", pairRole.toString());
         }
 
+        if (backgroundColorOverride != null) {
+            jsonObject.put("backgroundColorOverride", ColorUtilities.colorToString(backgroundColorOverride));
+        }
+
+        if (borderHeightOverride != null) {
+            jsonObject.put("borderHeightOverride", borderHeightOverride);
+        }
+        if (borderColorOverride != null) {
+            jsonObject.put("borderColorOverride", ColorUtilities.colorToString(borderColorOverride));
+        }
+
         if (!trackGroups.isEmpty()) {
             StringBuilder sb = new StringBuilder();
             for (Integer g : trackGroups) {
@@ -1557,6 +1603,17 @@ public abstract class AbstractTrack implements Track {
                     log.error("Unrecognized pairRole: " + jsonObject.getString("pairRole"));
                 }
             }
+        }
+
+        if (jsonObject.has("backgroundColorOverride")) {
+            this.backgroundColorOverride = ColorUtilities.stringToColor(jsonObject.getString("backgroundColorOverride"));
+        }
+
+        if (jsonObject.has("borderHeightOverride")) {
+            this.borderHeightOverride = jsonObject.getInt("borderHeightOverride");
+        }
+        if (jsonObject.has("borderColorOverride")) {
+            this.borderColorOverride = ColorUtilities.stringToColor(jsonObject.getString("borderColorOverride"));
         }
 
         if (jsonObject.has("trackGroups")) {

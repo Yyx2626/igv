@@ -210,13 +210,15 @@ public abstract class XYPlotRenderer extends DataRenderer {
             if ((baseValue > minValue) && (baseValue < maxValue)) {
                 int baseY = computeYPixelValue(arect, axisDefinition, baseValue);
 
-                getBaselineGraphics(context).drawLine((int) x, baseY, (int) maxX, baseY);
+                getBaselineGraphics(context, axisDefinition).drawLine((int) x, baseY, (int) maxX, baseY);
             }
 
             IGVPreferences prefs = PreferencesManager.getPreferences();
 
             Color altColor = track.getAltColor();
-            final Color borderColor = getBorderColor(track, prefs, altColor);
+            final Color borderColor = axisDefinition.getMidlineColor() != null
+                    ? axisDefinition.getMidlineColor()
+                    : getBorderColor(track, prefs, altColor);
             Graphics2D borderGraphics = context.getGraphic2DForColor(borderColor);
 
             // Draw the baseline -- todo, this is a wig track option?
@@ -247,10 +249,9 @@ public abstract class XYPlotRenderer extends DataRenderer {
      * @param context
      * @return
      */
-    private static Graphics2D getBaselineGraphics(RenderContext context) {
-        Graphics2D baselineGraphics;
-        baselineGraphics = (Graphics2D) context.getGraphic2DForColor(Color.lightGray).create();
-        return baselineGraphics;
+    private static Graphics2D getBaselineGraphics(RenderContext context, DataRange axisDefinition) {
+        Color color = axisDefinition.getMidlineColor() != null ? axisDefinition.getMidlineColor() : Color.lightGray;
+        return (Graphics2D) context.getGraphic2DForColor(color).create();
     }
 
     /**
@@ -274,6 +275,11 @@ public abstract class XYPlotRenderer extends DataRenderer {
         double delta = (maxValue - dataY) * yScaleFactor;
         double pY = drawingRect.getY() + delta;
 
-        return (int) Math.max(drawingRect.getMinY(), Math.min(drawingRect.getMaxY(), pY));
+        // getMaxY() is y+height - one past the last actually-paintable row (rows are y..y+height-1,
+        // since AWT/Java2D clip rectangles are half-open). Clamping to getMaxY() itself lands
+        // exactly on that excluded row, so a value at/near the data range's max (e.g. the "Mid"
+        // guide line when set at a track's own bottom edge) gets computed but never actually
+        // painted - looks identical to being clipped away.
+        return (int) Math.max(drawingRect.getMinY(), Math.min(drawingRect.getMaxY() - 1, pY));
     }
 }

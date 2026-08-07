@@ -353,6 +353,25 @@ public interface Track {
     void setPairRole(PairRole pairRole);
 
     /**
+     * Per-track override for Constants.TRACK_BACKGROUND_COLOR, or null to use the global preference.
+     */
+    Color getBackgroundColorOverride();
+
+    void setBackgroundColorOverride(Color color);
+
+    /**
+     * Per-track override for the height/color of the divider drawn immediately below this
+     * track, or null to use the global Constants.TRACK_BORDER_HEIGHT/TRACK_BORDER_COLOR preference.
+     */
+    Integer getBorderHeightOverride();
+
+    void setBorderHeightOverride(Integer height);
+
+    Color getBorderColorOverride();
+
+    void setBorderColorOverride(Color color);
+
+    /**
      * RTS-style numbered groups (1-9) this track currently belongs to. Never null.
      */
     Set<Integer> getTrackGroups();

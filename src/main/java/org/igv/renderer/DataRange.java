@@ -2,10 +2,12 @@ package org.igv.renderer;
 
 import org.igv.session.Persistable;
 import org.igv.track.Track;
+import org.igv.ui.color.ColorUtilities;
 import org.json.JSONObject;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 
+import java.awt.Color;
 import java.util.Collection;
 
 /**
@@ -38,6 +40,8 @@ public class DataRange {
      */
     private boolean flipAxis = false;
     private boolean drawBaseline = true;
+    /** Explicit color for the Mid guide line, or null to use XYPlotRenderer's existing gray/track-color fallback. */
+    private Color midlineColor = null;
 
     public DataRange() {
     }
@@ -107,6 +111,9 @@ public class DataRange {
         boolean flipAxis = jsonObject.optBoolean("flipAxis", false);
         DataRange dr = new DataRange(minimum, baseline, maximum, drawBaseline, isLog);
         dr.flipAxis = flipAxis;
+        if (jsonObject.has("midlineColor")) {
+            dr.midlineColor = ColorUtilities.stringToColor(jsonObject.getString("midlineColor"));
+        }
         return dr;
     }
 
@@ -178,6 +185,14 @@ public class DataRange {
         this.drawBaseline = drawBaseline;
     }
 
+    public Color getMidlineColor() {
+        return midlineColor;
+    }
+
+    public void setMidlineColor(Color midlineColor) {
+        this.midlineColor = midlineColor;
+    }
+
 
     /**
      * Restore object state from an XML element
@@ -199,6 +214,9 @@ public class DataRange {
         jsonObject.put("max", this.maximum);
         jsonObject.put("flipAxis", this.flipAxis);
         jsonObject.put("drawBaseline", this.drawBaseline);
+        if (this.midlineColor != null) {
+            jsonObject.put("midlineColor", ColorUtilities.colorToString(this.midlineColor));
+        }
     }
 
 

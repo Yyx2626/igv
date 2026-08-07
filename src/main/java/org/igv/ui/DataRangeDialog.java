@@ -7,6 +7,7 @@
 package org.igv.ui;
 
 import org.igv.renderer.DataRange;
+import org.igv.ui.color.ColorSwatch;
 
 import javax.swing.*;
 import java.awt.*;
@@ -21,6 +22,7 @@ public class DataRangeDialog extends org.igv.ui.IGVDialog  {
     private float base;
     private float max;
     private boolean isLog;
+    private Color midlineColor;
 
     /**
      * Creates new form DataRangeDialog
@@ -38,12 +40,14 @@ public class DataRangeDialog extends org.igv.ui.IGVDialog  {
             minTextField.setText(String.valueOf(min));
             baseTextField.setText(String.valueOf(base));
             maxTextField.setText(String.valueOf(max));
+            midColorSwatch.setSelectedColor(axisDefinition.getMidlineColor() != null ? axisDefinition.getMidlineColor() : Color.lightGray);
         }
     }
 
     public void setHideMid(boolean hideMid) {
         baseTextField.setVisible(!hideMid);
         jLabel3.setVisible(!hideMid);
+        midColorSwatch.setVisible(!hideMid);
     }
 
     /**
@@ -67,6 +71,8 @@ public class DataRangeDialog extends org.igv.ui.IGVDialog  {
         cancelButton = new javax.swing.JButton();
         isLogCheckBox = new JCheckBox();
         isLogLabel = new JLabel("Log scale");
+        midColorSwatch = new ColorSwatch(Color.lightGray);
+        midColorSwatch.setToolTipText("Mid line color");
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
         setTitle("Data Range");
@@ -116,7 +122,10 @@ public class DataRangeDialog extends org.igv.ui.IGVDialog  {
                                 .add(83, 83, 83)
                                 .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
                                         .add(maxTextField, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 97, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
-                                        .add(baseTextField, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 97, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
+                                        .add(layout.createSequentialGroup()
+                                                .add(baseTextField, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 97, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
+                                                .add(8, 8, 8)
+                                                .add(midColorSwatch, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 15, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE))
                                         .add(minTextField, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 97, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
                                         .add(isLogCheckBox, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 97, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)))
         );
@@ -134,7 +143,9 @@ public class DataRangeDialog extends org.igv.ui.IGVDialog  {
                                         .add(layout.createSequentialGroup()
                                                 .add(minTextField, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
                                                 .addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED)
-                                                .add(baseTextField, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)))
+                                                .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.BASELINE)
+                                                        .add(baseTextField, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
+                                                        .add(midColorSwatch, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, org.jdesktop.layout.GroupLayout.DEFAULT_SIZE, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE))))
                                 .add(12, 12, 12)
                                 .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.BASELINE)
                                         .add(jLabel4)
@@ -170,6 +181,7 @@ public class DataRangeDialog extends org.igv.ui.IGVDialog  {
             max = Float.valueOf(maxTextField.getText());
             base = Float.valueOf(baseTextField.getText());
             isLog = isLogCheckBox.isSelected();
+            midlineColor = midColorSwatch.getSelectedColor();
             return true;
 
         } catch (NumberFormatException numberFormatException) {
@@ -209,9 +221,14 @@ public class DataRangeDialog extends org.igv.ui.IGVDialog  {
 
     private JCheckBox isLogCheckBox;
     private JLabel isLogLabel;
+    private ColorSwatch midColorSwatch;
 
     public boolean isCanceled() {
         return canceled;
+    }
+
+    public Color getMidlineColor() {
+        return midlineColor;
     }
 
     public float getMin() {

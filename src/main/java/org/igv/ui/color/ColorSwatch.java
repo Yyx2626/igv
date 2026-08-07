@@ -34,6 +34,10 @@ public class ColorSwatch extends JPanel {
         this.setBackground(selectedColor);
     }
 
+    public Color getSelectedColor() {
+        return selectedColor;
+    }
+
     public void addColorChangeListener(ColorChangeListener listener) {
         listeners.add(listener);
     }

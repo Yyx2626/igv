@@ -306,6 +306,32 @@ public class TrackMenuUtils {
         });
         items.add(item);
 
+        item = new JMenuItem("Set Track Background Color...");
+        item.setToolTipText("Override the background color for just this track (or selection), instead of the global Track background color preference.");
+        item.addActionListener(evt -> {
+            Color current = tracks.iterator().next().getBackgroundColorOverride();
+            Color newColor = UIUtilities.showColorChooserDialog("Select Track Background Color", current);
+            if (newColor != null) {
+                for (Track t : tracks) {
+                    t.setBackgroundColorOverride(newColor);
+                }
+                IGV.getInstance().repaint(tracks);
+            }
+        });
+        items.add(item);
+
+        if (tracks.stream().anyMatch(t -> t.getBackgroundColorOverride() != null)) {
+            item = new JMenuItem("Unset Track Background Color");
+            item.setToolTipText("Revert to the global Track background color preference.");
+            item.addActionListener(evt -> {
+                for (Track t : tracks) {
+                    t.setBackgroundColorOverride(null);
+                }
+                IGV.getInstance().repaint(tracks);
+            });
+            items.add(item);
+        }
+
         return items;
     }
 
@@ -989,6 +1015,7 @@ public class TrackMenuUtils {
 
                     DataRange axisDefinition = new DataRange(dlg.getMin(), mid, dlg.getMax(),
                             prevAxisDefinition.isDrawBaseline(), dlg.isLog());
+                    axisDefinition.setMidlineColor(dlg.getMidlineColor());
 
                     for (Track track : selectedTracks) {
                         track.setDataRange(axisDefinition);

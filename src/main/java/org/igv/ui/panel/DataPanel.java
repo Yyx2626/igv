@@ -74,10 +74,10 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         setToolTipText("");
         painter = new DataPanelPainter();
 
-        if (darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.BACKGROUND_COLOR)) {
+        if (darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.TRACK_BACKGROUND_COLOR)) {
             setBackground(UIManager.getColor("Panel.background"));
         } else {
-            setBackground(PreferencesManager.getPreferences().getAsColor(Constants.BACKGROUND_COLOR));
+            setBackground(PreferencesManager.getPreferences().getAsColor(Constants.TRACK_BACKGROUND_COLOR));
         }
 
         ToolTipManager.sharedInstance().registerComponent(this);
@@ -118,15 +118,18 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         super.paintComponent(g);
 
         // Explicitly fill background - JComponent without UI delegate doesn't do this automatically.
-        // Read Constants.BACKGROUND_COLOR fresh (not the cached getBackground() from construction
+        // Read Constants.TRACK_BACKGROUND_COLOR fresh (not the cached getBackground() from construction
         // time) so a Preferences change is reflected on the very next repaint, no restart needed -
-        // mirrors TrackNamePanel's own live background-color read.
+        // mirrors TrackNamePanel's own live background-color read. A track's own
+        // backgroundColorOverride (set via "Set Track Background Color...") always wins.
         Graphics2D graphics2D = (Graphics2D) g;
         Rectangle clip = graphics2D.getClipBounds();
         if (clip != null) {
-            Color background = darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.BACKGROUND_COLOR)
+            Color override = getTrack() == null ? null : getTrack().getBackgroundColorOverride();
+            Color background = override != null ? override
+                    : darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.TRACK_BACKGROUND_COLOR)
                     ? UIManager.getColor("Panel.background")
-                    : PreferencesManager.getPreferences().getAsColor(Constants.BACKGROUND_COLOR);
+                    : PreferencesManager.getPreferences().getAsColor(Constants.TRACK_BACKGROUND_COLOR);
             graphics2D.setColor(background);
             graphics2D.fillRect(clip.x, clip.y, clip.width, clip.height);
         }

@@ -9,7 +9,9 @@ import org.igv.prefs.IGVPreferences;
 import org.igv.prefs.PreferencesChangeEvent;
 import org.igv.prefs.PreferencesManager;
 import org.igv.track.Track;
+import org.igv.track.TrackMenuUtils;
 import org.igv.ui.IGV;
+import org.igv.ui.util.UIUtilities;
 
 import javax.swing.*;
 import java.awt.*;
@@ -39,17 +41,44 @@ import java.util.List;
  */
 public class TrackPanelDivider extends JPanel implements IGVEventObserver {
 
-    /** Height of the visible border between tracks, read fresh from Constants.TRACK_BORDER_HEIGHT on every layout pass - see the PreferencesChangeEvent handling below for what forces a re-layout after a Preferences change. */
-    public static int getDividerHeight() {
-        return Math.max(0, PreferencesManager.getPreferences().getAsInt(Constants.TRACK_BORDER_HEIGHT));
+    /** Global default height, read fresh from Constants.TRACK_BORDER_HEIGHT on every layout pass - see the PreferencesChangeEvent handling below for what forces a re-layout after a Preferences change. */
+    public static int getGlobalDividerHeight() {
+        // Minimum 1, not 0: a 0-height divider can never be dragged or right-clicked.
+        return Math.max(1, PreferencesManager.getPreferences().getAsInt(Constants.TRACK_BORDER_HEIGHT));
     }
 
-    private static Color computeBorderColor() {
+    private static Color computeGlobalBorderColor() {
         boolean darkMode = Globals.isDarkMode();
         IGVPreferences prefs = PreferencesManager.getPreferences();
         return darkMode && !prefs.hasExplicitValue(Constants.TRACK_BORDER_COLOR)
                 ? new Color(200, 200, 200)
                 : prefs.getAsColor(Constants.TRACK_BORDER_COLOR);
+    }
+
+    /**
+     * This divider's own effective height: the above track's per-track override
+     * (Track.getBorderHeightOverride(), set via this divider's own right-click menu) if
+     * present, otherwise the global Constants.TRACK_BORDER_HEIGHT preference.
+     */
+    private int getDividerHeight() {
+        Track track = getOverrideTrack();
+        Integer override = track == null ? null : track.getBorderHeightOverride();
+        return override != null ? Math.max(1, override) : getGlobalDividerHeight();
+    }
+
+    private Color computeBorderColor() {
+        Track track = getOverrideTrack();
+        Color override = track == null ? null : track.getBorderColorOverride();
+        return override != null ? override : computeGlobalBorderColor();
+    }
+
+    /**
+     * The track whose per-divider override (if any) governs this specific divider - the
+     * track immediately above it, same track the drag-resize handler operates on.
+     */
+    private Track getOverrideTrack() {
+        TrackPanelScrollPane effective = getEffectiveAbovePane();
+        return effective == null ? null : effective.getTrackPanel().getTrack();
     }
 
     /**
@@ -74,6 +103,10 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
         MouseAdapter mouseAdapter = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showPopupMenu(e);
+                    return;
+                }
                 TrackPanelScrollPane effective = getEffectiveAbovePane();
                 if (effective == null) return;
                 if (PreferencesManager.getPreferences().getAsBoolean(Constants.SHOW_SINGLE_TRACK_PANE_KEY)) {
@@ -81,6 +114,13 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
                 }
                 dragStartY = e.getYOnScreen();
                 originalAboveHeight = getTrackHeight(effective);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showPopupMenu(e);
+                }
             }
 
             @Override
@@ -114,6 +154,57 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
                 handleTrackPanelDrop(dtde);
             }
         }, true);
+    }
+
+    /**
+     * Right-click menu for overriding just this divider's height/color, stored on the track
+     * above it (Track.getBorderHeightOverride/getBorderColorOverride) so it round-trips through
+     * Save/Load Session like any other per-track property.
+     */
+    private void showPopupMenu(MouseEvent e) {
+        Track track = getOverrideTrack();
+        if (track == null) return;
+
+        IGVPopupMenu menu = new IGVPopupMenu();
+
+        JMenuItem setHeightItem = new JMenuItem("Set Border Height...");
+        setHeightItem.addActionListener(evt -> {
+            Integer current = track.getBorderHeightOverride() != null ? track.getBorderHeightOverride() : getGlobalDividerHeight();
+            Integer value = TrackMenuUtils.getIntegerInput("Border height (pixels)", current);
+            if (value != null) {
+                track.setBorderHeightOverride(Math.max(1, value));
+                revalidate();
+                repaint();
+            }
+        });
+        menu.add(setHeightItem);
+
+        JMenuItem setColorItem = new JMenuItem("Set Border Color...");
+        setColorItem.addActionListener(evt -> {
+            Color current = track.getBorderColorOverride() != null ? track.getBorderColorOverride() : computeGlobalBorderColor();
+            Color newColor = UIUtilities.showColorChooserDialog("Select Border Color", current);
+            if (newColor != null) {
+                track.setBorderColorOverride(newColor);
+                setBackground(computeBorderColor());
+                repaint();
+            }
+        });
+        menu.add(setColorItem);
+
+        if (track.getBorderHeightOverride() != null || track.getBorderColorOverride() != null) {
+            menu.addSeparator();
+            JMenuItem unsetItem = new JMenuItem("Unset Border Height/Color");
+            unsetItem.addActionListener(evt -> {
+                track.setBorderHeightOverride(null);
+                track.setBorderColorOverride(null);
+                setBackground(computeBorderColor());
+                revalidate();
+                repaint();
+            });
+            menu.add(unsetItem);
+        }
+
+        menu.show(this, e.getX(), e.getY());
     }
 
     /**

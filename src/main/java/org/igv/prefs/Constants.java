@@ -26,9 +26,8 @@ final public class Constants {
     public static final String SCALE_FONTS = "SCALE_FONTS";
     public static final String FONT_SCALE_FACTOR = "FONT_SCALE_FACTOR";
     public static final String NAME_PANEL_WIDTH = "NAME_PANEL_WIDTH";
+    /** General background: the ruler/cytoband header and the empty space below the last track. */
     public static final String BACKGROUND_COLOR = "BACKGROUND_COLOR";
-    /** Ruler/cytoband header background - defaults to the same value as {@link #BACKGROUND_COLOR} so the header bar doesn't show a visible seam against the track area below it. */
-    public static final String HEADER_BACKGROUND_COLOR = "HEADER_BACKGROUND_COLOR";
     public static final String SHOW_ATTRIBUTE_VIEWS_KEY = "IGV.track.show.attribute.views";
     public static final String SHOW_SINGLE_TRACK_PANE_KEY = "IGV.single.track.pane";
     public static final String DETAILS_BEHAVIOR_KEY = "DETAILS_BEHAVIOR";
@@ -118,6 +117,8 @@ final public class Constants {
     public static final String TRACK_DRAW_BORDERS = "TRACK.DRAW_BORDERS";
     public static final String TRACK_BORDER_HEIGHT = "TRACK.BORDER_HEIGHT";
     public static final String TRACK_BORDER_COLOR = "TRACK.BORDER_COLOR";
+    /** Background of the track rows themselves (name panel + data panel), as opposed to the more general {@link #BACKGROUND_COLOR} (ruler + empty space below the last track). */
+    public static final String TRACK_BACKGROUND_COLOR = "TRACK.BACKGROUND_COLOR";
     public static final String CHART_DRAW_TOP_BORDER = "CHART.DRAW_TOP_BORDER";
     public static final String CHART_DRAW_BOTTOM_BORDER = "CHART.DRAW_BOTTOM_BORDER";
     public static final String CHART_COLOR_BORDERS = "CHART.COLOR_BORDERS";
@@ -429,7 +430,7 @@ final public class Constants {
     /**
      * List of keys that require a restart
      */
-    // BACKGROUND_COLOR, HEADER_BACKGROUND_COLOR, TRACK_BORDER_COLOR, and TRACK_BORDER_HEIGHT used
+    // BACKGROUND_COLOR, TRACK_BACKGROUND_COLOR, TRACK_BORDER_COLOR, and TRACK_BORDER_HEIGHT used
     // to be here - DataPanel/TrackNamePanel/HeaderPanel now read their colors fresh on every
     // paint, and TrackPanelDivider reacts to PreferencesChangeEvent with a revalidate(), so none
     // of them need a restart anymore.

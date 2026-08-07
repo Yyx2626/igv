@@ -20,10 +20,12 @@ import org.igv.track.RenderContext;
 import org.igv.track.Track;
 import org.igv.ui.FontManager;
 
+import javax.swing.UIManager;
 import java.awt.*;
 import java.util.List;
 
 import static org.igv.prefs.Constants.CHART_DRAW_Y_AXIS;
+import static org.igv.prefs.Constants.TRACK_BACKGROUND_COLOR;
 
 /**
  * @author jrobinso
@@ -88,9 +90,18 @@ public abstract class DataRenderer implements Renderer<LocusScore> {
         if (prefs.getAsBoolean(CHART_DRAW_Y_AXIS)) {
 
             Rectangle axisRect = new Rectangle(rect.x, rect.y + 1, AXIS_AREA_WIDTH, rect.height);
-            Graphics2D whiteGraphics = context.getGraphic2DForColor(Color.white);
+            // Re-covers whatever renderScores() drew under the axis-label strip with the track's
+            // own background color (not a hardcoded white), so this strip doesn't show up as a
+            // visibly different-colored column against the rest of a customized track background.
+            boolean darkMode = Globals.isDarkMode();
+            Color override = track.getBackgroundColorOverride();
+            Color axisBackground = override != null ? override
+                    : darkMode && !prefs.hasExplicitValue(TRACK_BACKGROUND_COLOR)
+                    ? UIManager.getColor("Panel.background")
+                    : prefs.getAsColor(TRACK_BACKGROUND_COLOR);
+            Graphics2D axisBackgroundGraphics = context.getGraphic2DForColor(axisBackground);
 
-            whiteGraphics.fillRect(axisRect.x, axisRect.y, axisRect.width, axisRect.height);
+            axisBackgroundGraphics.fillRect(axisRect.x, axisRect.y, axisRect.width, axisRect.height);
 
             Graphics2D axisGraphics = context.getGraphic2DForColor(axisLineColor);
 

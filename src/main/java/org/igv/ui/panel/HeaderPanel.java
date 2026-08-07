@@ -60,14 +60,14 @@ public class HeaderPanel extends JPanel implements Transferable, Paintable, IGVE
     /**
      * Match the track/name-panel background (Constants.BACKGROUND_COLOR) by default, rather than
      * a hardcoded white, so the ruler/cytoband bar doesn't show a visible seam against the track
-     * area below it - see Constants.HEADER_BACKGROUND_COLOR javadoc. Called fresh from
+     * area below it - see Constants.BACKGROUND_COLOR javadoc. Called fresh from
      * paintComponent (not just once from init()) so a Preferences change is reflected on the next
      * repaint with no restart needed.
      */
     private Color computeHeaderBackground() {
-        return darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.HEADER_BACKGROUND_COLOR)
+        return darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.BACKGROUND_COLOR)
                 ? UIManager.getColor("Panel.background")
-                : PreferencesManager.getPreferences().getAsColor(Constants.HEADER_BACKGROUND_COLOR);
+                : PreferencesManager.getPreferences().getAsColor(Constants.BACKGROUND_COLOR);
     }
 
     @Override
@@ -196,7 +196,7 @@ public class HeaderPanel extends JPanel implements Transferable, Paintable, IGVE
             JPanel panel = new JPanel();
             // No border here - a hardcoded gray outline around just the ruler/cytoband area
             // would visually separate it from the track area below even once their background
-            // colors match, undermining the uniform look Constants.HEADER_BACKGROUND_COLOR is for.
+            // colors match, undermining the uniform look Constants.BACKGROUND_COLOR is for.
             panel.setBackground(headerBackground);
             panel.setMinimumSize(new java.awt.Dimension(700, 0));
             panel.setPreferredSize(new java.awt.Dimension(0, 0));
