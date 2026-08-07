@@ -22,7 +22,9 @@ import org.igv.renderer.*;
 import org.igv.alignment.AlignmentDataManager;
 import org.igv.alignment.AlignmentTrack;
 import org.igv.alignment.SAMWriter;
+import org.igv.ui.AverageErrorBarOptionsDialog;
 import org.igv.ui.DataRangeDialog;
+import org.igv.ui.ErrorBarStyleDialog;
 import org.igv.ui.FontManager;
 import org.igv.ui.HeatmapScaleDialog;
 import org.igv.ui.IGV;
@@ -91,8 +93,6 @@ public class TrackMenuUtils {
                 multiMenu.add(multiTitle);
                 multiMenu.addSeparator();
 
-                addPairedIndicator(multiMenu, track);
-
                 for (Component item : getSharedMenuItems(selectedTracks)) {
                     multiMenu.add(item);
                 }
@@ -100,9 +100,11 @@ public class TrackMenuUtils {
                     multiMenu.add(item);
                 }
 
-                for (Component item : getPairingMenuItems(selectedTracks)) {
-                    multiMenu.add(item);
-                }
+                // Pairing items always sit right after the color items (Unset Track
+                // Color, etc.), in both this multi-track menu and the single-track menu
+                // below - keeping the position consistent regardless of whether anything
+                // is selected, instead of jumping to the very top when nothing is selected.
+                addPairingSection(multiMenu, track, selectedTracks, false);
 
                 // Filter to the applicable subset rather than requiring the WHOLE selection
                 // to uniformly match - e.g. "select all" via the header checkbox also picks
@@ -134,24 +136,28 @@ public class TrackMenuUtils {
                         multiMenu.addSeparator();
                         multiMenu.add(item);
 
-                        JMenu averageMenu = new JMenu("Average With Error Bar");
-                        ButtonGroup errorBarGroup = new ButtonGroup();
-                        JRadioButtonMenuItem semItem = new JRadioButtonMenuItem("Error Bar: SEM", true);
-                        JRadioButtonMenuItem sdItem = new JRadioButtonMenuItem("Error Bar: SD", false);
-                        JRadioButtonMenuItem noneItem = new JRadioButtonMenuItem("No Error Bar", false);
-                        errorBarGroup.add(semItem);
-                        errorBarGroup.add(sdItem);
-                        errorBarGroup.add(noneItem);
-                        semItem.addActionListener(e ->
-                                AverageErrorBarMenuAction.createAverageErrorBarTrack(dataTracksInSelection, ErrorBarType.SEM));
-                        sdItem.addActionListener(e ->
-                                AverageErrorBarMenuAction.createAverageErrorBarTrack(dataTracksInSelection, ErrorBarType.SD));
-                        noneItem.addActionListener(e ->
-                                AverageErrorBarMenuAction.createAverageErrorBarTrack(dataTracksInSelection, ErrorBarType.NONE));
-                        averageMenu.add(semItem);
-                        averageMenu.add(sdItem);
-                        averageMenu.add(noneItem);
-                        multiMenu.add(averageMenu);
+                        JMenuItem averageItem = new JMenuItem("Average With Error Bar...");
+                        averageItem.addActionListener(e -> {
+                            WindowFunction defaultFn = AverageErrorBarMenuAction.computeDefaultWindowFunction(dataTracksInSelection);
+                            AverageErrorBarOptionsDialog dlg = new AverageErrorBarOptionsDialog(IGV.getInstance().getMainFrame(), defaultFn);
+                            dlg.setVisible(true);
+                            if (!dlg.isCanceled()) {
+                                AverageErrorBarMenuAction.createAverageErrorBarTrack(dataTracksInSelection,
+                                        dlg.getErrorBarType(), dlg.getWindowFunction(), dlg.getNaValue());
+                            }
+                        });
+                        multiMenu.add(averageItem);
+                    }
+
+                    List<AverageErrorBarTrack> avgTracksInSelection = dataTracksInSelection.stream()
+                            .filter(t -> t instanceof AverageErrorBarTrack)
+                            .map(t -> (AverageErrorBarTrack) t)
+                            .collect(Collectors.toList());
+                    if (!avgTracksInSelection.isEmpty()) {
+                        multiMenu.addSeparator();
+                        for (Component item : getAverageErrorBarMenuItems(avgTracksInSelection)) {
+                            multiMenu.add(item);
+                        }
                     }
                 }
 
@@ -183,8 +189,6 @@ public class TrackMenuUtils {
         menu.add(popupTitle);
         menu.addSeparator();
 
-        addPairedIndicator(menu, track);
-
         // Items most tracks share
         if (track.getType() != TrackType.sequence && track.getType() != TrackType.merged) {
             for (Component item : getSharedMenuItems(Collections.singleton(track))) {
@@ -194,6 +198,10 @@ public class TrackMenuUtils {
                 menu.add(item);
             }
         }
+
+        // Pairing items always sit right after the color items - see the matching
+        // comment in the multi-track menu above.
+        addPairingSection(menu, track, Collections.singleton(track), true);
 
         // Add track specific items
         menu.add(new JPopupMenu.Separator());
@@ -306,7 +314,9 @@ public class TrackMenuUtils {
      * selection) is paired, add an informational "Top/Bottom of the pair with ..." label.
      * Worded from {@code track}'s own role, not its partner's, to avoid the earlier
      * "Paired with X (top)" phrasing where "(top)" read as describing X rather than the
-     * clicked track itself.
+     * clicked track itself. Adds no separator itself - callers group this with the
+     * "Pair/Unpair Tracks" items via {@link #addPairingSection}, which owns the
+     * surrounding separators so the whole pairing block reads as one section.
      */
     private static void addPairedIndicator(IGVPopupMenu menu, Track track) {
         if (!TrackPairing.isPaired(track)) {
@@ -318,7 +328,32 @@ public class TrackMenuUtils {
         JLabel pairLabel = new JLabel(LEADING_HEADING_SPACER + roleText + " of the pair with \"" + partnerName + "\"");
         pairLabel.setFont(FontManager.getFont(Font.ITALIC, 11));
         menu.add(pairLabel);
+    }
+
+    /**
+     * Adds the whole pairing section (paired-indicator label, if applicable, plus
+     * Pair/Unpair Tracks items) as one group, right after the color items - always in
+     * the same place whether anything is selected or not. Only emits the leading
+     * separator (and, for the single-track menu, the trailing one) when there's actually
+     * something to show, so an unpaired single track with no 2-track selection gets no
+     * empty section.
+     */
+    private static void addPairingSection(IGVPopupMenu menu, Track track, Collection<Track> tracks, boolean addTrailingSeparator) {
+        List<Component> pairingItems = getPairingMenuItems(tracks);
+        boolean showLabel = TrackPairing.isPaired(track);
+        if (!showLabel && pairingItems.isEmpty()) {
+            return;
+        }
         menu.addSeparator();
+        if (showLabel) {
+            addPairedIndicator(menu, track);
+        }
+        for (Component item : pairingItems) {
+            menu.add(item);
+        }
+        if (addTrailingSeparator) {
+            menu.addSeparator();
+        }
     }
 
     /**
@@ -350,6 +385,88 @@ public class TrackMenuUtils {
             });
             items.add(item);
         }
+
+        return items;
+    }
+
+    /**
+     * Batch versions of {@code AverageErrorBarTrack.getPopupMenuItems}'s Error Bar Type /
+     * Color / Style / Restore items, for when one or more {@code AverageErrorBarTrack}s
+     * are part of the current (checkbox) selection. The single-track {@code
+     * track.getPopupMenuItems(te)} path only runs when nothing is selected - a selected
+     * average track (alone or with others) otherwise fell through the multi-track branch
+     * with none of its own menu items at all. Each action here applies to every average
+     * track in {@code avgTracks}.
+     */
+    private static List<Component> getAverageErrorBarMenuItems(List<AverageErrorBarTrack> avgTracks) {
+        List<Component> items = new ArrayList<>();
+
+        JMenu errorBarTypeMenu = new JMenu("Error Bar Type");
+        ButtonGroup typeGroup = new ButtonGroup();
+        JRadioButtonMenuItem semItem = new JRadioButtonMenuItem("SEM");
+        JRadioButtonMenuItem sdItem = new JRadioButtonMenuItem("SD");
+        JRadioButtonMenuItem noneItem = new JRadioButtonMenuItem("None");
+        typeGroup.add(semItem);
+        typeGroup.add(sdItem);
+        typeGroup.add(noneItem);
+        semItem.addActionListener(e -> {
+            avgTracks.forEach(t -> t.setErrorBarType(ErrorBarType.SEM));
+            IGV.getInstance().repaint(new ArrayList<Track>(avgTracks));
+        });
+        sdItem.addActionListener(e -> {
+            avgTracks.forEach(t -> t.setErrorBarType(ErrorBarType.SD));
+            IGV.getInstance().repaint(new ArrayList<Track>(avgTracks));
+        });
+        noneItem.addActionListener(e -> {
+            avgTracks.forEach(t -> t.setErrorBarType(ErrorBarType.NONE));
+            IGV.getInstance().repaint(new ArrayList<Track>(avgTracks));
+        });
+        errorBarTypeMenu.add(semItem);
+        errorBarTypeMenu.add(sdItem);
+        errorBarTypeMenu.add(noneItem);
+        items.add(errorBarTypeMenu);
+
+        JMenuItem colorItem = new JMenuItem("Set Error Bar Color...");
+        colorItem.addActionListener(e -> {
+            Color c = UIUtilities.showColorChooserDialog("Select Error Bar Color", avgTracks.get(0).getErrorBarStyle().getColorOverride());
+            if (c != null) {
+                avgTracks.forEach(t -> t.getErrorBarStyle().setColorOverride(c));
+                IGV.getInstance().repaint(new ArrayList<Track>(avgTracks));
+            }
+        });
+        items.add(colorItem);
+
+        JMenuItem styleItem = new JMenuItem("Error Bar Style...");
+        styleItem.addActionListener(e -> {
+            ErrorBarStyleDialog dlg = new ErrorBarStyleDialog(IGV.getInstance().getMainFrame(), avgTracks.get(0).getErrorBarStyle());
+            dlg.setVisible(true);
+            if (!dlg.isCanceled()) {
+                for (int i = 1; i < avgTracks.size(); i++) {
+                    avgTracks.get(i).getErrorBarStyle().copyFrom(avgTracks.get(0).getErrorBarStyle());
+                }
+                IGV.getInstance().repaint(new ArrayList<Track>(avgTracks));
+            }
+        });
+        items.add(styleItem);
+
+        items.add(new JPopupMenu.Separator());
+        JMenuItem restoreItem = new JMenuItem(avgTracks.size() > 1 ? "Restore Original Tracks (each)" : "Restore Original Tracks");
+        restoreItem.addActionListener(e -> {
+            for (AverageErrorBarTrack avgTrack : avgTracks) {
+                long order = avgTrack.getOrder();
+                List<DataTrack> members = avgTrack.getMemberTracks();
+                for (Track member : members) {
+                    member.setOrder(order);
+                }
+                if (TrackPairing.isPaired(avgTrack)) {
+                    TrackPairing.unpair(List.of(avgTrack), IGV.getInstance().getAllTracks());
+                }
+                IGV.getInstance().deleteTracks(List.of(avgTrack));
+                IGV.getInstance().addTracks(new ArrayList<>(members));
+            }
+            IGV.getInstance().repaint();
+        });
+        items.add(restoreItem);
 
         return items;
     }

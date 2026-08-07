@@ -375,9 +375,10 @@ public class JSONSessionReader implements SessionReader {
                                     log.warn("Unrecognized windowFunction: " + descriptor.trackJson.getString("windowFunction"));
                                 }
                             }
+                            float naValue = (float) descriptor.trackJson.optDouble("naValue", 0);
                             AverageErrorBarTrack avgTrack = new AverageErrorBarTrack(id, name);
                             avgTrack.setMemberTracks(childTracks);
-                            avgTrack.setDatasource(new AverageErrorBarDataSource(childTracks, resolvedFunction));
+                            avgTrack.setDatasource(new AverageErrorBarDataSource(childTracks, resolvedFunction, naValue));
                             avgTrack.setOrder(descriptor.order);
                             avgTrack.unmarshalJSON(descriptor.trackJson);
                             igv.addTrack(avgTrack);

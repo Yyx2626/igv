@@ -281,13 +281,15 @@ public abstract class AbstractTrack implements Track {
                     var x = trackRectangle.x;
                     for (var name : attributeNames) {
                         final var key = name.toUpperCase();
-                        // PAIR_GROUP is read from this track's own pairId field, not the
-                        // generic row-keyed attribute table (keyed by getSample(), which
-                        // falls back to the track *name* - so any two tracks sharing a
-                        // name would otherwise incorrectly appear paired together).
+                        // PAIR_GROUP/GROUP_AUTOSCALE are read from this track's own fields, not
+                        // the generic row-keyed attribute table (keyed by getSample(), which
+                        // falls back to the track *name* - so any two tracks sharing a name
+                        // would otherwise incorrectly appear paired/grouped together).
                         var attributeValue = key.equals(AttributeManager.PAIR_GROUP)
                                 ? pairId
-                                : attributeManager.getAttribute(s, key);
+                                : key.equals(AttributeManager.GROUP_AUTOSCALE)
+                                        ? autoscaleGroup
+                                        : attributeManager.getAttribute(s, key);
                         if (attributeValue != null) {
                             var rect = new Rectangle(x, y, AttributeHeaderPanel.ATTRIBUTE_COLUMN_WIDTH, sampleHeight - 1);
                             graphics.setColor(AttributeManager.getInstance().getColor(key, attributeValue));

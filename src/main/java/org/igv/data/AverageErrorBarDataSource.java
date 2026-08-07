@@ -14,9 +14,13 @@ import java.util.TreeSet;
 
 /**
  * Data source for {@code AverageErrorBarTrack}: for each aligned genomic bin, computes
- * the mean, sample standard deviation, and standard error of the mean across whichever
- * member tracks have a value in that bin (members with no data in a given bin are
- * excluded from that bin's statistics, not treated as zero).
+ * the mean, sample standard deviation, and standard error of the mean across every
+ * member track. A member with no data covering a given bin (a gap/"NA") is zero-filled
+ * with {@link #naValue} (default 0, user-configurable via
+ * {@code AverageErrorBarOptionsDialog}) rather than excluded - excluding it instead
+ * shrinks the effective sample size for that bin alone (down to n=1 whenever only one
+ * member has a gap there), which silently drops the error bar and skews the mean toward
+ * whichever member happened to have data.
  * <p>
  * Modeled on {@link CombinedDataSource}'s boundary-union technique, generalized from 2
  * to N member tracks. Each member is queried using a single {@code resolvedFunction}
@@ -30,10 +34,16 @@ public class AverageErrorBarDataSource implements DataSource {
 
     private final List<DataTrack> members;
     private WindowFunction resolvedFunction;
+    private float naValue;
 
     public AverageErrorBarDataSource(List<DataTrack> members, WindowFunction resolvedFunction) {
+        this(members, resolvedFunction, 0f);
+    }
+
+    public AverageErrorBarDataSource(List<DataTrack> members, WindowFunction resolvedFunction, float naValue) {
         this.members = members;
         this.resolvedFunction = resolvedFunction;
+        this.naValue = naValue;
     }
 
     public List<DataTrack> getMembers() {
@@ -42,6 +52,14 @@ public class AverageErrorBarDataSource implements DataSource {
 
     public WindowFunction getResolvedFunction() {
         return resolvedFunction;
+    }
+
+    public float getNaValue() {
+        return naValue;
+    }
+
+    public void setNaValue(float naValue) {
+        this.naValue = naValue;
     }
 
     @Override
@@ -82,38 +100,42 @@ public class AverageErrorBarDataSource implements DataSource {
             int start = boundaries[bb];
             int end = boundaries[bb + 1];
 
+            int present = 0; // members with an actual (non-NaN) score covering this bin
+            float[] memberValues = new float[n]; // missing members are zero-filled, not excluded
             double sum = 0;
             double sumSq = 0;
-            int contributing = 0;
 
             for (int m = 0; m < n; m++) {
                 List<LocusScore> scores = perMember.get(m);
                 int idx = findContains(start, end, scores, Math.max(searchIndex[m], 0));
                 searchIndex[m] = idx;
+                float v = naValue;
                 if (idx >= 0) {
-                    float v = scores.get(idx).getScore();
-                    if (!Float.isNaN(v)) {
-                        sum += v;
-                        sumSq += (double) v * v;
-                        contributing++;
+                    float raw = scores.get(idx).getScore();
+                    if (!Float.isNaN(raw)) {
+                        v = raw;
+                        present++;
                     }
                 }
+                memberValues[m] = v;
+                sum += v;
+                sumSq += (double) v * v;
             }
 
-            if (contributing == 0) {
+            if (present == 0) {
                 continue;
             }
 
-            float mean = (float) (sum / contributing);
+            float mean = (float) (sum / n);
             float sd = Float.NaN;
             float sem = Float.NaN;
-            if (contributing >= 2) {
-                double variance = (sumSq - contributing * (double) mean * mean) / (contributing - 1);
+            if (n >= 2) {
+                double variance = (sumSq - n * (double) mean * mean) / (n - 1);
                 sd = (float) Math.sqrt(Math.max(0, variance));
-                sem = (float) (sd / Math.sqrt(contributing));
+                sem = (float) (sd / Math.sqrt(n));
             }
 
-            result.add(new AverageErrorLocusScore(start, end, mean, sd, sem, contributing));
+            result.add(new AverageErrorLocusScore(start, end, mean, sd, sem, n));
         }
 
         return result;
@@ -182,7 +204,7 @@ public class AverageErrorBarDataSource implements DataSource {
 
     @Override
     public Collection<WindowFunction> getAvailableWindowFunctions() {
-        return Arrays.asList(WindowFunction.min, WindowFunction.mean, WindowFunction.max);
+        return Arrays.asList(WindowFunction.min, WindowFunction.mean, WindowFunction.max, WindowFunction.absoluteMax);
     }
 
     @Override

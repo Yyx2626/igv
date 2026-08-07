@@ -96,6 +96,17 @@ public class BBDataSource extends AbstractDataSource implements DataSource {
      */
     @Override
     protected List<LocusScore> getPrecomputedSummaryScores(String chr, int start, int end, int zoom) {
+        // BigWig zoom records only store min/max/sum/sumSquares/validCount per bin -
+        // absoluteMax (whichever of min/max has the larger magnitude) can't be
+        // reconstructed from those without the raw values, and BBFile.decodeZoomData()
+        // has no case for it (throws RuntimeException("Unsupported window function")).
+        // Returning null here makes AbstractDataSource fall back to the raw-data
+        // Accumulator path instead, which does support absoluteMax correctly - otherwise
+        // every repaint throws, gets swallowed by the async track-load error handler, and
+        // the track silently renders nothing.
+        if (windowFunction == WindowFunction.absoluteMax) {
+            return null;
+        }
         // Translate IGV zoom number to bpperpixel.
         try {
             if (Globals.CHR_ALL.equals(chr)) {

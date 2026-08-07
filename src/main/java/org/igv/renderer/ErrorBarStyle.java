@@ -65,6 +65,15 @@ public class ErrorBarStyle {
         this.colorOverride = colorOverride;
     }
 
+    /** Copies every field from {@code other} onto this instance, for applying one "Error Bar Style..." dialog result to several selected tracks at once. */
+    public void copyFrom(ErrorBarStyle other) {
+        this.shape = other.shape;
+        this.barWidthPercent = other.barWidthPercent;
+        this.capStyle = other.capStyle;
+        this.lineWidthPx = other.lineWidthPx;
+        this.colorOverride = other.colorOverride;
+    }
+
     public void marshalJSON(JSONObject json) {
         json.put("errorBarShape", shape.toString());
         json.put("errorBarWidthPercent", barWidthPercent);

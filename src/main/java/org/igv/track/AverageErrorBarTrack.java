@@ -42,6 +42,7 @@ public class AverageErrorBarTrack extends DataSourceTrack {
     private List<DataTrack> memberTracks;
     private ErrorBarType errorBarType = ErrorBarType.SEM;
     private ErrorBarStyle errorBarStyle = new ErrorBarStyle();
+    private float naValue = 0f;
 
     /** Special constructor for session unmarshalling - mirrors {@code CombinedDataTrack}. */
     public AverageErrorBarTrack(String id, String name) {
@@ -49,10 +50,11 @@ public class AverageErrorBarTrack extends DataSourceTrack {
     }
 
     public AverageErrorBarTrack(String id, String name, List<DataTrack> memberTracks,
-                                 WindowFunction resolvedFunction, ErrorBarType errorBarType) {
-        super(null, id, name, new AverageErrorBarDataSource(memberTracks, resolvedFunction));
+                                 WindowFunction resolvedFunction, ErrorBarType errorBarType, float naValue) {
+        super(null, id, name, new AverageErrorBarDataSource(memberTracks, resolvedFunction, naValue));
         this.memberTracks = memberTracks;
         this.errorBarType = errorBarType;
+        this.naValue = naValue;
         setRendererClass(AverageErrorBarRenderer.class);
     }
 
@@ -83,6 +85,17 @@ public class AverageErrorBarTrack extends DataSourceTrack {
 
     public void setErrorBarStyle(ErrorBarStyle errorBarStyle) {
         this.errorBarStyle = errorBarStyle;
+    }
+
+    public float getNaValue() {
+        return naValue;
+    }
+
+    public void setNaValue(float naValue) {
+        this.naValue = naValue;
+        if (dataSource instanceof AverageErrorBarDataSource) {
+            ((AverageErrorBarDataSource) dataSource).setNaValue(naValue);
+        }
     }
 
     @Override
@@ -202,6 +215,7 @@ public class AverageErrorBarTrack extends DataSourceTrack {
     public void marshalJSON(JSONObject json) {
         super.marshalJSON(json);
         json.put("errorBarType", errorBarType.toString());
+        json.put("naValue", naValue);
         errorBarStyle.marshalJSON(json);
         if (dataSource instanceof AverageErrorBarDataSource) {
             json.put("windowFunction", ((AverageErrorBarDataSource) dataSource).getResolvedFunction().toString());
@@ -235,6 +249,9 @@ public class AverageErrorBarTrack extends DataSourceTrack {
                 this.errorBarType = ErrorBarType.valueOf(jsonObject.getString("errorBarType"));
             } catch (IllegalArgumentException ignored) {
             }
+        }
+        if (jsonObject.has("naValue")) {
+            this.naValue = (float) jsonObject.getDouble("naValue");
         }
         this.errorBarStyle = ErrorBarStyle.fromJSON(jsonObject);
 
