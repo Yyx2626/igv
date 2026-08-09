@@ -216,7 +216,6 @@ SAM.INSERT_SIZE_THRESHOLD	Default maximum (bp)	float	100000
 info Settings below override defaults for 3rd-gen (PacBio, Oxford Nanopore, ...) alignments.
 
 SAM.MAX_VISIBLE_RANGE	Visibility range threshold (kb)	float	1000	Range at which alignments become visibile
-SAM.SHOW_INSERTION_MARKERS	Show insertion markers	boolean	TRUE
 SAM.QUICK_CONSENSUS_MODE	Quick consensus mode	boolean	FALSE
 
 ##Downsampling
@@ -319,6 +318,7 @@ TOOLTIP.DISMISS_DELAY	Tooltip dismiss delay (ms)	integer	60000
 
 UCSC_HOST	hgdownload.soe.ucsc.edu
 UCSC_BACKUP_HOST	genome-browser.s3.us-east-1.amazonaws.com
+UCSC_CONNECT_TIMEOUT	1000
 
 SHOW_SELECTION_PANEL	FALSE
 
