@@ -7,11 +7,66 @@
 
 Integrative Genomics Viewer - desktop genome visualization tool for Mac, Windows, and Linux.
 
+## About this fork
+
+This repository was forked from [`igvteam/igv`](https://github.com/igvteam/igv)
+on August 9, 2026. The customization work started from upstream commit
+[`5f20cadf7`](https://github.com/igvteam/igv/commit/5f20cadf7fa10d405e7a8ecd9255a1ed502d9115)
+(`Restore "new session" and "reload session"`), cloned on August 5, 2026. This
+stable customization snapshot contains 12 local commits through
+[`8e8d19d1d`](https://github.com/Yyx2626/igv/commit/8e8d19d1d).
+
+### Downloads
+
+**Download the compiled customized IGV builds from the
+[`Yyx2626/igv` Releases page](https://github.com/Yyx2626/igv/releases).**
+
+This is the permanent download location for this customized fork. Individual
+versioned installers and archives will appear there as releases are published.
+For the original, unmodified IGV project, visit
+[`igvteam/igv`](https://github.com/igvteam/igv).
+
+### Major customizations
+
+- **Track pairing:** pair two tracks as top and bottom members, edit their data
+  ranges together, autoscale paired sides independently, and persist pairing in
+  JSON sessions.
+- **Numbered track groups:** define, extend, and recall groups 1-9 with keyboard
+  shortcuts or the group-tab controls below the track area.
+- **Average with error bars:** combine selected tracks into a synthetic mean
+  track with SEM, SD, or no error bars; configure missing-value handling,
+  windowing, rendering, color, cap style, and restore the original tracks.
+- **Appearance controls:** configure global or per-track backgrounds and divider
+  colors/heights, customize data-range mid-line colors, and use visually
+  zero-height dividers that remain draggable through a floating hover overlay.
+- **Portable launchers:** select bundled JDK 21 runtimes by operating system and
+  CPU architecture on macOS and Windows.
+
+### Minor fixes and debugging
+
+- Fixed duplicate loading of files dropped from macOS Finder and made divider
+  drag-and-drop use the live panel position instead of stale cached state.
+- Fixed negative-only autoscaling, Y-axis and mid-line clipping, viewport and
+  track background gaps, and error bars being clipped by autoscaling.
+- Fixed selection behavior for Shift-click, right-click, checkboxes, and mixed
+  multi-track context menus.
+- Fixed JSON session restoration for local merged/average tracks, pair-group
+  columns, group tabs, track order, restored data ranges, and stale pair links.
+- Fixed missing-value statistics and pixel alignment in average/error-bar
+  rendering.
+- Fixed broken `igvtools` classpath launchers and bundled-JDK selection scripts.
+- Made HTTP connect/read timeouts configurable and reduced their defaults to
+  avoid multi-minute startup stalls when a remote annotation host is unavailable.
+
+The individual commits contain the implementation rationale and detailed bug
+causes. This branch is a customized IGV build and is not an official
+`igvteam/igv` release.
+
 ### Building
 
-These instructions are meant for developers interested in working on the IGV code. For normal use,
-we recommend the pre-built releases available
-at [http://software.broadinstitute.org/software/igv/download](http://software.broadinstitute.org/software/igv/download).
+These instructions are meant for developers interested in working on the IGV
+code. For pre-built packages of this customized version, use the Releases link
+above.
 
 Builds are executed from the IGV project directory. Files will be created in the 'build' subdirectory.
 
