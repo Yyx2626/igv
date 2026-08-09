@@ -39,7 +39,7 @@ public class AverageErrorBarMenuAction {
             return;
         }
 
-        TrackPairing.Partition partition = TrackPairing.partitionTopBottom(selectedTracks);
+        TrackPairing.Partition partition = TrackPairing.partitionTopBottom(new ArrayList<>(allDataTracks));
         List<DataTrack> topGroup = filterDataTracks(partition.top);
         List<DataTrack> bottomGroup = filterDataTracks(partition.bottom);
 
@@ -59,13 +59,10 @@ public class AverageErrorBarMenuAction {
             return;
         }
 
-        long baseOrder = selectedTracks.iterator().next().getOrder();
-        for (int i = 0; i < newTracks.size(); i++) {
-            newTracks.get(i).setOrder(baseOrder + i);
-        }
-
-        IGV.getInstance().removeTracks(selectedTracks);
-        IGV.getInstance().addTracks(newTracks);
+        // Replace only the DataTracks that actually contributed to the average. The panel
+        // operation uses current visual positions rather than stale/tied Track.order values,
+        // so TOP is inserted first, BOTTOM immediately below it, at the first input's slot.
+        IGV.getInstance().replaceTracks(new ArrayList<>(allDataTracks), newTracks);
         if (topAvg != null && bottomAvg != null) {
             TrackPairing.pair(topAvg, bottomAvg);
         }

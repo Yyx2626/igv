@@ -33,7 +33,7 @@ IGV.chart.track.height	Default numeric track height (pixels)	integer	40
 IGV.track.height	Default feature track height (pixels)	integer	15
 IGV.interact.track.height	Default interaction track height (pixels)	integer	250
 TRACK.BACKGROUND_COLOR	Track background color	color	250,250,250
-TRACK.BORDER_HEIGHT	Height of borders between tracks (pixels)	integer	0
+TRACK.BORDER_HEIGHT	Height of borders between tracks (pixels)	integer	5
 TRACK.BORDER_COLOR	Border color	color	250,250,250
 TRACK_ATTRIBUTE_NAME_KEY	Sample attribute key for track names	string	null
 
@@ -318,8 +318,6 @@ TOOLTIP.DISMISS_DELAY	Tooltip dismiss delay (ms)	integer	60000
 
 UCSC_HOST	hgdownload.soe.ucsc.edu
 UCSC_BACKUP_HOST	genome-browser.s3.us-east-1.amazonaws.com
-UCSC_CONNECT_TIMEOUT	1000
-
 SHOW_SELECTION_PANEL	FALSE
 
 ENCODE_FILELIST_URL	https://raw.githubusercontent.com/igvteam/igv-data/refs/heads/main/data/encode/

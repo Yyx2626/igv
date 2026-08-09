@@ -26,6 +26,7 @@ import java.util.Vector;
 public class GenomeComboBox extends JComboBox<GenomeListItem> {
 
     private static final Logger log = LogManager.getLogger(GenomeComboBox.class);
+    private boolean refreshingModel;
 
     public GenomeComboBox() {
 
@@ -35,19 +36,25 @@ public class GenomeComboBox extends JComboBox<GenomeListItem> {
 
 
     public void refreshGenomeListComboBox() {
+        refreshingModel = true;
+        try {
+            setModel(buildModel());
 
-        setModel(buildModel());
+            String curId = GenomeManager.getInstance().getGenomeId();
+            if (curId == null) return;
 
-        String curId = GenomeManager.getInstance().getGenomeId();
-        if (curId == null) return;
-
-        int c = this.getItemCount();
-        for (int i = 0; i < c; i++) {
-            final GenomeListItem item = this.getItemAt(i);
-            if (curId.equals(item.getId())) {
-                setSelectedItem(item);
-                break;
+            int c = this.getItemCount();
+            for (int i = 0; i < c; i++) {
+                final GenomeListItem item = this.getItemAt(i);
+                if (curId.equals(item.getId())) {
+                    setSelectedItem(item);
+                    break;
+                }
             }
+        } finally {
+            // setModel/setSelectedItem fire ActionEvents. Those are programmatic refreshes,
+            // not user requests to load whichever item was temporarily selected.
+            refreshingModel = false;
         }
     }
 
@@ -72,6 +79,9 @@ public class GenomeComboBox extends JComboBox<GenomeListItem> {
     class GenomeBoxActionListener implements ActionListener {
 
         public void actionPerformed(ActionEvent actionEvent) {
+            if (refreshingModel) {
+                return;
+            }
             Object selItem = getSelectedItem();
             if (!(selItem instanceof GenomeListItem genomeListItem)) {
                 return;

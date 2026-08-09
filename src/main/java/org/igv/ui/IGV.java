@@ -324,6 +324,11 @@ public class IGV implements IGVEventObserver {
         contentPane.getCommandBar().focusSearchBox();
     }
 
+    /** Update the visible genome selection as soon as the new genome model is committed. */
+    public void refreshGenomeSelection() {
+        contentPane.getCommandBar().refreshGenomeListComboBox();
+    }
+
     public void enableExtrasMenu() {
 
         menuBar.enableExtrasMenu();
@@ -364,7 +369,9 @@ public class IGV implements IGVEventObserver {
 
                         try {
                             List<Track> tracks = load(locator);
-                            addTracks(tracks);
+                            // Show progress after each locator, but add all tracks produced by
+                            // that locator in one EDT/layout pass (e.g. alignment + coverage).
+                            appendTracks(tracks);
                         } catch (Exception e) {
                             log.error("Error loading track", e);
                             messages.append("Error loading " + locator + ": " + e.getMessage());
@@ -558,6 +565,20 @@ public class IGV implements IGVEventObserver {
         for (var track : trackList) {
             addTrackPanel(track);
         }
+    }
+
+    /** Append interactively loaded tracks without re-sorting existing tracks by order. */
+    public void appendTracks(List<? extends Track> trackList) {
+        contentPane.getMainPanel().appendTrackPanels(trackList);
+    }
+
+    /** Replace visible tracks at the first removed track's current visual position. */
+    public void replaceTracks(Collection<? extends Track> tracksToReplace, List<? extends Track> replacements) {
+        contentPane.getMainPanel().replaceTrackPanels(tracksToReplace, replacements);
+        for (Track track : tracksToReplace) {
+            track.unload();
+        }
+        revalidateTrackPanels();
     }
 
     public void addTrack(Track track) {

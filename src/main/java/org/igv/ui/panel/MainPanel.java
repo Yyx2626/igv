@@ -28,6 +28,7 @@ import java.io.File;
 import java.net.URI;
 import java.util.*;
 import java.util.List;
+import java.util.function.Predicate;
 
 import static org.igv.prefs.Constants.*;
 
@@ -291,28 +292,144 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
      * @return the TrackPanelScrollPane containing the track
      */
     public synchronized TrackPanelScrollPane addTrackPanel(Track track) {
-
-        final TrackPanel trackPanel = new TrackPanel(track.getName(), this);
-
-        trackPanel.addTrack(track);
-        final TrackPanelScrollPane sp = new TrackPanelScrollPane();
-        track.setViewport(sp);
-
-        Runnable runnable = () -> {
-            sp.setViewportView(trackPanel);
+        final TrackPanelScrollPane[] result = new TrackPanelScrollPane[1];
+        UIUtilities.invokeAndWaitOnEventThread(() -> {
+            TrackPanelScrollPane sp = createTrackPanel(track);
             long trackOrder = track.getOrder();
             if (trackOrder == 0) {
                 track.setOrder(getTrackPanels().size());
             }
             int insertPosition = findInsertPosition(track.getOrder());
             trackPanelContainer.add(sp, insertPosition);
-        };
+            rebuildDividers();
+            result[0] = sp;
+        });
+        return result[0];
+    }
 
-        UIUtilities.invokeAndWaitOnEventThread(runnable);
+    /**
+     * Append newly loaded tracks in locator/load order and rebuild the Swing layout once.
+     * Explicit order values from genome/session tracks are intentionally not used here:
+     * this path is for interactive file/URL loading, where a new track should not jump above
+     * an already visible genome annotation merely because that annotation has a large order
+     * value in the genome JSON.
+     */
+    public synchronized void appendTrackPanels(Collection<? extends Track> tracks) {
+        if (tracks == null || tracks.isEmpty()) {
+            return;
+        }
+        UIUtilities.invokeAndWaitOnEventThread(() -> {
+            long nextOrder = nextAppendOrder();
+            for (Track track : tracks) {
+                track.setOrder(nextOrder++);
+                trackPanelContainer.add(createTrackPanel(track));
+            }
+            rebuildDividers();
+        });
+    }
 
-        rebuildDividers();
+    /**
+     * Replace any visible selected panels with replacement tracks at the first selected
+     * panel's exact visual position. Non-contiguous selected panels are all removed; the
+     * replacements remain adjacent and retain their list order.
+     */
+    public synchronized void replaceTrackPanels(Collection<? extends Track> tracksToReplace,
+                                                List<? extends Track> replacements) {
+        if (tracksToReplace == null || tracksToReplace.isEmpty()) {
+            return;
+        }
+        UIUtilities.invokeAndWaitOnEventThread(() -> {
+            Set<Track> replacementSet = Collections.newSetFromMap(new IdentityHashMap<>());
+            replacementSet.addAll(tracksToReplace);
 
+            List<TrackPanelScrollPane> current = new ArrayList<>();
+            for (Component component : trackPanelContainer.getComponents()) {
+                if (component instanceof TrackPanelScrollPane) {
+                    current.add((TrackPanelScrollPane) component);
+                }
+            }
+
+            boolean hasMatch = current.stream().anyMatch(pane -> {
+                Track track = pane.getTrackPanel().getTrack();
+                return track != null && replacementSet.contains(track);
+            });
+            if (!hasMatch) {
+                return;
+            }
+
+            List<TrackPanelScrollPane> replacementPanes = new ArrayList<>();
+            if (replacements != null) {
+                for (Track replacement : replacements) {
+                    replacementPanes.add(createTrackPanel(replacement));
+                }
+            }
+            List<TrackPanelScrollPane> retained = replaceAtFirstMatch(current, pane -> {
+                Track track = pane.getTrackPanel().getTrack();
+                return track != null && replacementSet.contains(track);
+            }, replacementPanes);
+
+            trackPanelContainer.removeAll();
+            for (int i = 0; i < retained.size(); i++) {
+                TrackPanelScrollPane pane = retained.get(i);
+                Track track = pane.getTrackPanel().getTrack();
+                if (track != null) {
+                    // Start at 1 because addTrackPanel treats 0 as "order not assigned".
+                    track.setOrder(i + 1L);
+                }
+                trackPanelContainer.add(pane);
+            }
+            rebuildDividers();
+        });
+    }
+
+    /** Pure layout helper kept package-visible for regression tests. */
+    static <T> List<T> replaceAtFirstMatch(List<T> current, Predicate<T> remove,
+                                           List<? extends T> replacements) {
+        List<T> result = new ArrayList<>();
+        int insertionIndex = -1;
+        for (T item : current) {
+            if (remove.test(item)) {
+                if (insertionIndex < 0) {
+                    insertionIndex = result.size();
+                }
+            } else {
+                result.add(item);
+            }
+        }
+        if (insertionIndex >= 0) {
+            result.addAll(insertionIndex, replacements);
+        }
+        return result;
+    }
+
+    private TrackPanelScrollPane createTrackPanel(Track track) {
+        TrackPanel trackPanel = new TrackPanel(track.getName(), this);
+        trackPanel.addTrack(track);
+        TrackPanelScrollPane sp = new TrackPanelScrollPane();
+        sp.setViewportView(trackPanel);
+        track.setViewport(sp);
         return sp;
+    }
+
+    private long nextAppendOrder() {
+        long maximum = 0;
+        for (TrackPanel panel : getTrackPanels()) {
+            Track track = panel.getTrack();
+            if (track != null) {
+                maximum = Math.max(maximum, track.getOrder());
+            }
+        }
+        if (maximum >= Globals.JS_MAX_SAFE_INTEGER) {
+            long order = 1;
+            for (TrackPanel panel : getTrackPanels()) {
+                Track track = panel.getTrack();
+                if (track != null) {
+                    track.setOrder(order++);
+                }
+            }
+            return order;
+        }
+        return maximum + 1;
     }
 
     /**

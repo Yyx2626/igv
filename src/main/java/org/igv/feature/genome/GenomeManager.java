@@ -10,6 +10,7 @@ package org.igv.feature.genome;
 
 
 import org.igv.DirectoryManager;
+import org.igv.Globals;
 import org.igv.event.GenomeChangeEvent;
 import org.igv.event.IGVEventBus;
 import org.igv.exceptions.DataLoadException;
@@ -30,6 +31,7 @@ import org.igv.ucsc.hub.TrackSelectionDialog;
 import org.igv.ui.IGV;
 import org.igv.ui.IGVMenuBar;
 import org.igv.ui.WaitCursorManager;
+import org.igv.ui.genome.GenomeLoadingDialog;
 import org.igv.ui.genome.GenomeListItem;
 import org.igv.ui.genome.GenomeListManager;
 import org.igv.ui.panel.FrameManager;
@@ -43,6 +45,8 @@ import java.net.SocketException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -60,6 +64,7 @@ public class GenomeManager {
     private static GenomeListManager genomeListManager;
 
     private Genome currentGenome;
+    private final AtomicLong genomeLoadGeneration = new AtomicLong();
 
 
     /**
@@ -125,7 +130,7 @@ public class GenomeManager {
                 genomePath = item.getPath();
             }
         }
-        return loadGenome(genomePath) != null; // monitor[0]);
+        return loadGenome(genomePath, genomeId) != null; // monitor[0]);
     }
 
     /**
@@ -139,14 +144,39 @@ public class GenomeManager {
      * @throws IOException
      */
     public Genome loadGenome(String genomePath) throws IOException {
+        String label = genomePath;
+        int slash = Math.max(label.lastIndexOf('/'), label.lastIndexOf('\\'));
+        if (slash >= 0 && slash + 1 < label.length()) {
+            label = label.substring(slash + 1);
+        }
+        int extension = label.lastIndexOf('.');
+        if (extension > 0) {
+            label = label.substring(0, extension);
+        }
+        return loadGenome(genomePath, label);
+    }
+
+    private Genome loadGenome(String genomePath, String genomeLabel) throws IOException {
 
         WaitCursorManager.CursorToken cursorToken = null;
+        long loadGeneration = genomeLoadGeneration.incrementAndGet();
+        GenomeLoadingDialog loadingDialog = null;
+        boolean committed = false;
+        Thread loadingThread = Thread.currentThread();
         try {
             log.info("Loading genome: " + genomePath);
             if (IGV.hasInstance()) {
                 IGVMenuBar.getInstance().setAllMenusEnabled(false);
-                IGV.getInstance().setStatusBarMessage("<html><font color=blue>Loading genome</font></html>");
+                IGV.getInstance().setStatusBarMessage("<html><font color=blue>Loading genome: " + genomeLabel + "</font></html>");
                 cursorToken = WaitCursorManager.showWaitCursor();
+                if (!Globals.isBatch()) {
+                    loadingDialog = GenomeLoadingDialog.show(
+                            IGV.getInstance().getMainFrame(), genomeLabel,
+                            () -> {
+                                loadingThread.interrupt();
+                                cancelGenomeLoad(loadGeneration);
+                            });
+                }
             }
 
             Genome newGenome = GenomeLoader.getLoader(genomePath).loadGenome();
@@ -165,6 +195,12 @@ public class GenomeManager {
                 log.error("Failed to load user defined alias", e);
             }
 
+            // Cancel and newer genome requests invalidate this result before it can clear the
+            // existing session or change the current genome.
+            if (loadGeneration != genomeLoadGeneration.get()) {
+                log.info("Canceled loading genome: " + genomeLabel);
+                return null;
+            }
 
             if (IGV.hasInstance()) {
                 IGV.getInstance().resetSession(null);
@@ -174,30 +210,94 @@ public class GenomeManager {
             GenomeListItem genomeListItem = new GenomeListItem(newGenome.getDisplayName(), genomePath, newGenome.getId());
             GenomeListManager.getInstance().addGenomeItem(genomeListItem);
 
-            setCurrentGenome(newGenome);
+            if (!setCurrentGenome(newGenome, () -> loadGeneration == genomeLoadGeneration.get())) {
+                log.info("Canceled loading genome annotations: " + genomeLabel);
+                return null;
+            }
+            committed = true;
+
+            // Keep the dialog visible until the genome's default annotation tracks (normally
+            // RefSeq) have been loaded and added to the UI by setCurrentGenome().
+            if (loadingDialog != null) {
+                loadingDialog.close();
+                loadingDialog = null;
+            }
 
             return currentGenome;
 
         } catch (SocketException e) {
+            if (loadGeneration != genomeLoadGeneration.get()) {
+                return null;
+            }
             throw new RuntimeException("Server connection error", e);
+        } catch (IOException | RuntimeException e) {
+            if (loadGeneration != genomeLoadGeneration.get()) {
+                return null;
+            }
+            throw e;
         } finally {
+            if (loadingDialog != null) {
+                loadingDialog.close();
+            }
             if (IGV.hasInstance()) {
-                IGV.getInstance().setStatusBarMessage("");
+                if (loadGeneration == genomeLoadGeneration.get()) {
+                    IGV.getInstance().setStatusBarMessage("");
+                    if (!committed) {
+                        if (currentGenome != null) {
+                            IGVEventBus.getInstance().post(new GenomeChangeEvent(currentGenome));
+                        } else {
+                            IGVMenuBar.getInstance().setAllMenusEnabled(true);
+                            IGV.getInstance().refreshGenomeSelection();
+                        }
+                    }
+                }
                 WaitCursorManager.removeWaitCursor(cursorToken);
             }
         }
     }
 
+    private void cancelGenomeLoad(long loadGeneration) {
+        if (!genomeLoadGeneration.compareAndSet(loadGeneration, loadGeneration + 1) || !IGV.hasInstance()) {
+            return;
+        }
+        IGV.getInstance().setStatusBarMessage("");
+        if (currentGenome != null) {
+            // Restore controls and menu state to the genome that remains active.
+            IGVEventBus.getInstance().post(new GenomeChangeEvent(currentGenome));
+        } else {
+            IGVMenuBar.getInstance().setAllMenusEnabled(true);
+            IGV.getInstance().refreshGenomeSelection();
+        }
+    }
+
     public void setCurrentGenome(Genome newGenome) {
+        setCurrentGenome(newGenome, () -> true);
+    }
+
+    private boolean setCurrentGenome(Genome newGenome, BooleanSupplier continueLoading) {
+
+        if (!continueLoading.getAsBoolean()) {
+            return false;
+        }
 
         this.currentGenome = newGenome;
 
         // hasInstance() check to filters unit test
         if (IGV.hasInstance()) {
+            // The genome model is now authoritative. Reflect that in the combo box before
+            // loading sequence/annotation tracks so progressive track loading never appears
+            // under the previous genome's label.
+            IGV.getInstance().refreshGenomeSelection();
             IGV.getInstance().goToLocus(newGenome.getHomeChromosome()); //  newGenome.getDefaultPos());
             FrameManager.getDefaultFrame().setChromosomeName(newGenome.getHomeChromosome(), true);
 
-            restoreGenomeTracks(newGenome);
+            if (!restoreGenomeTracks(newGenome, continueLoading)) {
+                return false;
+            }
+
+            if (!continueLoading.getAsBoolean()) {
+                return false;
+            }
 
             IGV.getInstance().resetFrames();
             IGV.getInstance().getSession().clearHistory();
@@ -211,18 +311,30 @@ public class GenomeManager {
 
             IGVEventBus.getInstance().post(new GenomeChangeEvent(newGenome));
         }
+        return true;
     }
 
     /**
      * @param genome
      */
     public void restoreGenomeTracks(Genome genome) {
+        restoreGenomeTracks(genome, () -> true);
+    }
+
+    private boolean restoreGenomeTracks(Genome genome, BooleanSupplier continueLoading) {
+
+        if (!continueLoading.getAsBoolean()) {
+            return false;
+        }
 
         IGV.getInstance().setSequenceTrack();
 
         // Fetch the gene track, defined by .genome files.  In this format the genome data is encoded in the .genome file
         FeatureTrack geneFeatureTrack = genome.getGeneTrack();   // Used for .genome and .gbk formats.  Otherwise null
         if (geneFeatureTrack != null) {
+            if (!continueLoading.getAsBoolean()) {
+                return false;
+            }
             IGV.getInstance().addTrack(geneFeatureTrack);
         }
 
@@ -230,9 +342,15 @@ public class GenomeManager {
         List<Track> annotationTracks = new ArrayList<>();
         if (resources != null) {
             for (ResourceLocator locator : resources) {
+                if (!continueLoading.getAsBoolean()) {
+                    return false;
+                }
                 try {
                     if (locator != null) {
                         List<Track> tracks = IGV.getInstance().load(locator);
+                        if (!continueLoading.getAsBoolean()) {
+                            return false;
+                        }
                         annotationTracks.addAll(tracks);
                     }
                 } catch (DataLoadException e) {
@@ -242,6 +360,9 @@ public class GenomeManager {
         }
 
         if (annotationTracks.size() > 0) {
+            if (!continueLoading.getAsBoolean()) {
+                return false;
+            }
             IGV.getInstance().addTracks(annotationTracks);
             for (Track track : annotationTracks) {
                 ResourceLocator locator = track.getResourceLocator();
@@ -262,6 +383,7 @@ public class GenomeManager {
         }
 
         IGV.getInstance().revalidateTrackPanels();
+        return continueLoading.getAsBoolean();
     }
 
     /**

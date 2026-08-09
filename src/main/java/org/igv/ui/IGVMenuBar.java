@@ -386,7 +386,13 @@ public class IGVMenuBar extends JMenuBar {
 
                 // If a file selection was made
                 if (file != null) {
-                    GenomeManager.getInstance().loadGenome(file.getAbsolutePath());
+                    LongRunningTask.submit(() -> {
+                        try {
+                            GenomeManager.getInstance().loadGenome(file.getAbsolutePath());
+                        } catch (Exception ex) {
+                            MessageUtils.showErrorMessage(ex.getMessage(), ex);
+                        }
+                    });
                 }
             } catch (Exception ex) {
                 MessageUtils.showErrorMessage(ex.getMessage(), ex);
@@ -1208,4 +1214,3 @@ public class IGVMenuBar extends JMenuBar {
     }
 
 }
-
