@@ -142,9 +142,6 @@ public class IGV implements IGVEventObserver {
      */
     private IGV(Frame frame, Main.IGVArgs igvArgs) {
 
-        final long constructorStart = System.nanoTime();
-        long checkpointStart;
-
         theInstance = this;
 
         final IGVPreferences preferences = PreferencesManager.getPreferences();
@@ -200,17 +197,9 @@ public class IGV implements IGVEventObserver {
         }
         rootPane.setDoubleBuffered(true);
 
-        checkpointStart = System.nanoTime();
-        log.info("STARTUP CHECKPOINT: before IGVContentPane construction");
         contentPane = new IGVContentPane(this);
-        log.info("STARTUP CHECKPOINT: after IGVContentPane construction (" +
-                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
 
-        checkpointStart = System.nanoTime();
-        log.info("STARTUP CHECKPOINT: before IGVMenuBar construction");
         menuBar = IGVMenuBar.createInstance(this);
-        log.info("STARTUP CHECKPOINT: after IGVMenuBar construction (" +
-                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
 
         rootPane.setContentPane(contentPane);
         rootPane.setJMenuBar(menuBar);
@@ -218,10 +207,7 @@ public class IGV implements IGVEventObserver {
         glassPane.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         // consumeEvents(glassPane);
 
-        checkpointStart = System.nanoTime();
         mainFrame.pack();
-        log.info("STARTUP CHECKPOINT: mainFrame.pack() completed (" +
-                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
 
         //Certain components MUST be visible, so we set minimum size
         //{@link MainPanel#addDataPanel}
@@ -243,7 +229,6 @@ public class IGV implements IGVEventObserver {
 
         applicationBounds = normalizeApplicationBounds(applicationBounds, boundsArr);
         mainFrame.setBounds(applicationBounds);
-        log.info("STARTUP CHECKPOINT: initial main frame bounds " + applicationBounds);
 
         subscribeToEvents();
 
@@ -254,8 +239,6 @@ public class IGV implements IGVEventObserver {
             int timerDelay = PreferencesManager.getPreferences().getAsInt(AUTOSAVE_FREQUENCY) * 60000; // Convert timer delay to ms
             sessionAutosaveTimer.scheduleAtFixedRate(new AutosaveTimerTask(this), timerDelay, timerDelay);
         }
-        log.info("STARTUP CHECKPOINT: IGV constructor completed (" +
-                (System.nanoTime() - constructorStart) / 1_000_000 + " ms total)");
     }
 
     static Rectangle normalizeApplicationBounds(Rectangle savedBounds, Rectangle[] screenBounds) {
@@ -1561,19 +1544,12 @@ public class IGV implements IGVEventObserver {
         @Override
         public void run() {
 
-            final long startupRunnableStart = System.nanoTime();
-            long checkpointStart;
-            log.info("STARTUP CHECKPOINT: StartupRunnable.run() begin");
             final IGVPreferences preferences = PreferencesManager.getPreferences();
 
             // Start CommandsServer **before** loading the initial genome, as credentials might need to be set for
             // privately hosted genomes.
-            checkpointStart = System.nanoTime();
             startCommandsServer(igvArgs, preferences);
-            log.info("STARTUP CHECKPOINT: command server startup completed (" +
-                    (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
 
-            checkpointStart = System.nanoTime();
             UIUtilities.invokeAndWaitOnEventThread(() -> {
                 mainFrame.setIconImage(getIconImage());
                 if (Globals.IS_MAC) {
@@ -1581,9 +1557,6 @@ public class IGV implements IGVEventObserver {
                 }
                 mainFrame.setVisible(true);
             });
-            log.info("STARTUP CHECKPOINT: main frame set visible (" +
-                    (System.nanoTime() - checkpointStart) / 1_000_000 + " ms; " +
-                    (System.nanoTime() - startupRunnableStart) / 1_000_000 + " ms since StartupRunnable began)");
 
             // Load the initial genome.
             final boolean runningBatch = igvArgs.getBatchFile() != null;

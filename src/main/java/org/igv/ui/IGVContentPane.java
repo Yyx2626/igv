@@ -45,27 +45,17 @@ public class IGVContentPane extends JPanel {
         commandBarPanel.setLayout(layout);
         add(commandBarPanel, BorderLayout.NORTH);
 
-        long checkpointStart = System.nanoTime();
-        log.info("STARTUP CHECKPOINT: before IGVCommandBar construction");
         igvCommandBar = new IGVCommandBar();
-        log.info("STARTUP CHECKPOINT: after IGVCommandBar construction (" +
-                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
         igvCommandBar.setMinimumSize(new Dimension(250, 33));
         igvCommandBar.setBorder(new BasicBorders.MenuBarBorder(Color.GRAY, Color.GRAY));
         igvCommandBar.setAlignmentX(Component.BOTTOM_ALIGNMENT);
         commandBarPanel.add(igvCommandBar);
 
 
-        checkpointStart = System.nanoTime();
         mainPanel = new MainPanel(igv);
-        log.info("STARTUP CHECKPOINT: MainPanel construction completed (" +
-                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
         add(mainPanel, BorderLayout.CENTER);
 
-        checkpointStart = System.nanoTime();
         statusBar = new ApplicationStatusBar();
-        log.info("STARTUP CHECKPOINT: ApplicationStatusBar construction completed (" +
-                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
         statusBar.setDebugGraphicsOptions(javax.swing.DebugGraphics.NONE_OPTION);
         add(statusBar, BorderLayout.SOUTH);
     }

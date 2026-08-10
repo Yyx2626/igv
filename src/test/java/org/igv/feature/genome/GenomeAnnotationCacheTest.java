@@ -1,6 +1,8 @@
 package org.igv.feature.genome;
 
 import com.sun.net.httpserver.HttpServer;
+import org.igv.feature.genome.load.TrackConfig;
+import org.igv.util.ResourceLocator;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -12,7 +14,9 @@ import java.nio.file.Files;
 import java.util.concurrent.Executors;
 
 import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 public class GenomeAnnotationCacheTest {
@@ -53,6 +57,23 @@ public class GenomeAnnotationCacheTest {
         } finally {
             server.stop(0);
         }
+    }
+
+    @Test
+    public void cachedOrdinaryGzipDoesNotRetainRemoteTabixIndex() throws Exception {
+        TrackConfig config = new TrackConfig();
+        config.url = "https://example.org/refGene.sorted.txt.gz";
+        config.indexURL = "https://example.org/refGene.sorted.txt.gz.tbi";
+        config.indexed = true;
+        config.format = "refgene";
+        ResourceLocator remote = ResourceLocator.fromTrackConfig(config);
+        File cachedFile = temporaryFolder.newFile("refGene.txt.gz");
+
+        ResourceLocator cached = GenomeManager.createCachedAnnotationLocator(remote, cachedFile);
+
+        assertEquals(cachedFile.getAbsolutePath(), cached.getPath());
+        assertNull(cached.getIndexPath());
+        assertFalse(cached.isIndexed());
     }
 
     private static HttpServer startServer(byte[] content, long delayMillis) throws Exception {

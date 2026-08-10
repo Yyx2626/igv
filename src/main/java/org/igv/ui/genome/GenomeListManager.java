@@ -191,10 +191,6 @@ public class GenomeListManager {
 
         if (downloadedGenomesMap == null) {
 
-            final long scanStart = System.nanoTime();
-            log.info("STARTUP CHECKPOINT: scanning local genome cache " +
-                    DirectoryManager.getGenomeCacheDirectory().getAbsolutePath());
-
             downloadedGenomesMap = new HashMap<>();
             if (!DirectoryManager.getGenomeCacheDirectory().exists()) {
                 return downloadedGenomesMap;
@@ -282,8 +278,6 @@ public class GenomeListManager {
                     }
                 }
             }
-            log.info("STARTUP CHECKPOINT: local genome cache scan completed (" +
-                    (System.nanoTime() - scanStart) / 1_000_000 + " ms)");
         }
 
         return downloadedGenomesMap;

@@ -10,13 +10,15 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
 - Made local FASTA loading stay local: local genome registration no longer
   triggers hosted-genome or UCSC hub queries.
 - Cached downloaded default RefSeq annotations under the user's IGV directory,
-  with bounded timeouts, stoppable downloads, and atomic cache publication.
+  with bounded timeouts, stoppable downloads, atomic cache publication, and
+  correct non-indexed reading of ordinary gzip tables.
 - Kept the genome-loading dialog visible through default RefSeq loading and
   changed Stop into normal cancellation without a false UI `SEVERE` error.
 - Restored saved main-window bounds at no smaller than the preferred startup
   size while keeping the window within the selected display.
-- Added detailed startup checkpoints, bypassed URL mapping for local services,
-  and limited the optional remote mapping-table lookup to one attempt per run.
+- Used temporary startup timing checkpoints to isolate network delays, then
+  removed them; bypassed URL mapping for local services and limited the optional
+  remote mapping-table lookup to one attempt per run.
 - Excluded compiled distribution packages from Git tracking to prevent release
   archives and bundled JDKs from inflating repository history.
 

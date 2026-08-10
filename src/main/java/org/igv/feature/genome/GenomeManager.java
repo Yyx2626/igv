@@ -427,8 +427,17 @@ public class GenomeManager {
             log.info("Loading cached genome annotation: " + cacheFile.getAbsolutePath());
         }
 
+        return createCachedAnnotationLocator(locator, cacheFile);
+    }
+
+    static ResourceLocator createCachedAnnotationLocator(ResourceLocator locator, File cacheFile) {
         TrackConfig cachedConfig = TrackConfig.fromJSON(locator.getTrackConfig().toJSON().toString());
         cachedConfig.url = cacheFile.getAbsolutePath();
+        // Only the data file is cached.  Keeping the remote .tbi makes Tribble
+        // treat an ordinary gzip RefSeq table as BGZF and fail with
+        // "Invalid GZIP header" even though the cached data is valid.
+        cachedConfig.indexURL = null;
+        cachedConfig.indexed = false;
         return ResourceLocator.fromTrackConfig(cachedConfig);
     }
 
