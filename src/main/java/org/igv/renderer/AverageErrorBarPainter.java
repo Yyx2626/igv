@@ -42,7 +42,7 @@ final class AverageErrorBarPainter {
             return;
         }
         ErrorBarStyle style = errTrack.getErrorBarStyle();
-        DataRange dataRange = track.getDataRange();
+        DataRange dataRange = context.getDataRange(track);
         double origin = context.getOrigin();
         double locScale = context.getScale();
 
@@ -73,7 +73,7 @@ final class AverageErrorBarPainter {
             int[] span = errorPixelSpan(dataY -> barModeYPixel(rect, dataRange, (float) dataY),
                     dataRange.getBaseline(), mean, err, style);
 
-            Color color = errorBarColor(track, style, mean, dataRange);
+            Color color = errorBarColor(track, style, mean, dataRange, context);
             drawOne(context, color, (int) pX, (int) dx, span[0], span[1], style);
         }
     }
@@ -94,7 +94,7 @@ final class AverageErrorBarPainter {
             return;
         }
         ErrorBarStyle style = errTrack.getErrorBarStyle();
-        DataRange dataRange = track.getDataRange();
+        DataRange dataRange = context.getDataRange(track);
         double origin = context.getOrigin();
         double locScale = context.getScale();
 
@@ -124,7 +124,7 @@ final class AverageErrorBarPainter {
             return;
         }
 
-        Color color = errorBarColor(track, style, 0, dataRange);
+        Color color = errorBarColor(track, style, 0, dataRange, context);
         Graphics2D g = context.getGraphic2DForColor(color);
         for (int i = 1; i < segments.size(); i++) {
             int[] prev = segments.get(i - 1);
@@ -196,11 +196,13 @@ final class AverageErrorBarPainter {
         return null;
     }
 
-    private static Color errorBarColor(Track track, ErrorBarStyle style, float mean, DataRange dataRange) {
+    private static Color errorBarColor(Track track, ErrorBarStyle style, float mean,
+                                       DataRange dataRange, RenderContext context) {
         if (style.getColorOverride() != null) {
             return style.getColorOverride();
         }
-        Color base = mean >= dataRange.getBaseline() ? track.getColor() : track.getAltColor();
+        Color base = mean >= dataRange.getBaseline()
+                ? context.getPositiveColor(track) : context.getNegativeColor(track);
         return base != null ? base.darker() : ErrorBarStyle.DEFAULT_COLOR;
     }
 

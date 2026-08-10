@@ -93,6 +93,7 @@ public class ReferenceFrame {
     protected volatile double scale;
     /** Display direction only; genomic loading and cache ranges remain ascending. */
     private volatile boolean inverted;
+    private volatile RegionDisplayCoordinateMap regionDisplayCoordinateMap;
 
     protected Locus initialLocus = null;
     private InsertionMarker expandedInsertion;
@@ -354,15 +355,20 @@ public class ReferenceFrame {
 
 
     public void shiftOriginPixels(int delta) {
-        double shiftBP = delta * getScale();
+        double shiftBP = delta * getDisplayScale();
         setOrigin(shiftBP + origin);
         eventBus.post(ViewChange.LocusChangeResult(this, chrName, origin, getEnd(), false));
     }
 
     public void shiftOriginPixelsPanning(int delta) {
-        double shiftBP = delta * getScale();
+        double shiftBP = delta * getDisplayScale();
         setOrigin(shiftBP + origin);
         eventBus.post(ViewChange.LocusChangeResultPanning(this, chrName, origin, getEnd(), false));
+    }
+
+    private double getDisplayScale() {
+        RegionDisplayCoordinateMap coordinateMap = getRegionDisplayCoordinateMap();
+        return coordinateMap.hasCollapsedIntervals() ? coordinateMap.getDisplayScale() : getScale();
     }
 
     /**
@@ -524,6 +530,10 @@ public class ReferenceFrame {
      * @return
      */
     public double getChromosomePosition(int screenPosition) {
+        RegionDisplayCoordinateMap coordinateMap = getRegionDisplayCoordinateMap();
+        if (coordinateMap.hasCollapsedIntervals()) {
+            return coordinateMap.getGenomicPosition(screenPosition);
+        }
         if (inverted) {
             screenPosition = widthInPixels - screenPosition;
         }
@@ -566,6 +576,10 @@ public class ReferenceFrame {
      * @return screen position (pixels)
      */
     public int getScreenPosition(double chromosomePosition) {
+        RegionDisplayCoordinateMap coordinateMap = getRegionDisplayCoordinateMap();
+        if (coordinateMap.hasCollapsedIntervals()) {
+            return coordinateMap.getScreenPosition(chromosomePosition);
+        }
         int forwardPosition;
         // If there is an expanded insertion in view we need to account for the empty screen space
         if (expandedInsertion != null && chromosomePosition > expandedInsertion.position) {
@@ -582,6 +596,19 @@ public class ReferenceFrame {
 
     public void setInverted(boolean inverted) {
         this.inverted = inverted;
+    }
+
+    public RegionDisplayCoordinateMap getRegionDisplayCoordinateMap() {
+        RegionDisplayCoordinateMap current = regionDisplayCoordinateMap;
+        if (current == null || !current.matches(this)) {
+            current = RegionDisplayCoordinateMap.forFrame(this);
+            regionDisplayCoordinateMap = current;
+        }
+        return current;
+    }
+
+    public void refreshRegionDisplayCoordinateMap() {
+        regionDisplayCoordinateMap = RegionDisplayCoordinateMap.forFrame(this);
     }
 
 

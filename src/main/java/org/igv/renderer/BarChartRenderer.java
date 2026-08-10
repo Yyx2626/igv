@@ -28,20 +28,17 @@ public class BarChartRenderer extends XYPlotRenderer {
      */
     @Override
     protected void drawDataPoint(Color graphColor, int dx, int pX, int baseY, int pY, LocusScore score, RenderContext context) {
-        //if (pY != baseY) {
-        if (dx <= 1) {
-            context.getGraphic2DForColor(graphColor).drawLine(pX, baseY, pX, pY);
-        } else {
-            //Graphics2D outlineContext = context.getGraphic2DForColor(Color.lightGray);
-            if (pY > baseY) {
-                context.getGraphic2DForColor(graphColor).fillRect(pX, baseY, dx, pY - baseY);
-                //    outlineContext.drawRect(pX, baseY, dx, pY - baseY);
-
-            } else {
-                context.getGraphic2DForColor(graphColor).fillRect(pX, pY, dx, baseY - pY);
-                //    outlineContext.drawRect(pX, pY, dx, baseY - pY);
-            }
+        Rectangle bounds = barBounds(pX, dx, baseY, pY);
+        if (bounds.height > 0) {
+            // Use a filled rectangle even for one-pixel bars. SVG line caps extend beyond their
+            // endpoints, which can make the bar protrude across the horizontal baseline.
+            context.getGraphic2DForColor(graphColor).fillRect(
+                    bounds.x, bounds.y, bounds.width, bounds.height);
         }
-        //}
+    }
+
+    static Rectangle barBounds(int pX, int width, int baseY, int valueY) {
+        return new Rectangle(pX, Math.min(baseY, valueY), Math.max(1, width),
+                Math.abs(valueY - baseY));
     }
 }

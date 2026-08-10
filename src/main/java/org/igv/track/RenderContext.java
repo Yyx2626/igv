@@ -1,6 +1,8 @@
 package org.igv.track;
 
 import org.igv.prefs.PreferencesManager;
+import org.igv.feature.TrackRegionOverride;
+import org.igv.renderer.DataRange;
 import org.igv.ui.panel.ReferenceFrame;
 
 import javax.swing.*;
@@ -24,6 +26,14 @@ public class RenderContext {
     private Rectangle clipBounds;
     public boolean multiframe = false;
     public int expandedInsertionPosition = -1;
+    private TrackRegionOverride regionOverride;
+    private DataRange regionalDataRange;
+    private boolean regionalPass;
+    private Double originOverride;
+    private Double endOverride;
+    private Double scaleOverride;
+    private DisplayBinPlan displayBinPlan;
+    private Rectangle labelClipBounds;
 
     /**
      * X translation for this context relative to its parent.  This is used in expanded insertion "multi-frame* view
@@ -61,6 +71,14 @@ public class RenderContext {
         this.visibleRect = new Rectangle(context.visibleRect);
         this.clipBounds = new Rectangle(context.clipBounds);
         this.expandedInsertionPosition = context.expandedInsertionPosition;
+        this.regionOverride = context.regionOverride;
+        this.regionalDataRange = context.regionalDataRange;
+        this.regionalPass = context.regionalPass;
+        this.originOverride = context.originOverride;
+        this.endOverride = context.endOverride;
+        this.scaleOverride = context.scaleOverride;
+        this.displayBinPlan = context.displayBinPlan;
+        this.labelClipBounds = context.labelClipBounds == null ? null : new Rectangle(context.labelClipBounds);
         if (PreferencesManager.getPreferences().getAntiAliasing() && graphics != null) {
             graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         }
@@ -127,15 +145,15 @@ public class RenderContext {
     }
 
     public double getOrigin() {
-        return referenceFrame.getOrigin();
+        return originOverride == null ? referenceFrame.getOrigin() : originOverride;
     }
 
     public double getEndLocation() {
-        return referenceFrame.getEnd();
+        return endOverride == null ? referenceFrame.getEnd() : endOverride;
     }
 
     public double getScale() {
-        return referenceFrame.getScale();
+        return scaleOverride == null ? referenceFrame.getScale() : scaleOverride;
     }
 
     public Rectangle getVisibleRect() {
@@ -160,6 +178,82 @@ public class RenderContext {
 
     public ReferenceFrame getReferenceFrame() {
         return referenceFrame;
+    }
+
+    public void setRegionOverride(TrackRegionOverride regionOverride) {
+        this.regionOverride = regionOverride;
+        this.regionalDataRange = null;
+    }
+
+    public TrackRegionOverride getRegionOverride() {
+        return regionOverride;
+    }
+
+    public boolean isRegionalPass() {
+        return regionalPass;
+    }
+
+    public void setRegionalPass(boolean regionalPass) {
+        this.regionalPass = regionalPass;
+    }
+
+    public void setViewTransform(double origin, double end, double scale) {
+        this.originOverride = origin;
+        this.endOverride = end;
+        this.scaleOverride = scale;
+    }
+
+    public void setDisplayBinPlan(DisplayBinPlan displayBinPlan) {
+        this.displayBinPlan = displayBinPlan;
+    }
+
+    public DisplayBinPlan getDisplayBinPlan() {
+        return displayBinPlan;
+    }
+
+    /** Logical screen bounds in which a complete annotation label may be placed. */
+    public Rectangle getLabelClipBounds() {
+        return labelClipBounds == null ? trackRectangle : labelClipBounds;
+    }
+
+    public void setLabelClipBounds(Rectangle labelClipBounds) {
+        this.labelClipBounds = labelClipBounds == null ? null : new Rectangle(labelClipBounds);
+    }
+
+    public Color getPositiveColor(Track track) {
+        return regionOverride != null && regionOverride.getPositiveColor() != null
+                ? regionOverride.getPositiveColor() : track.getColor();
+    }
+
+    public Color getNegativeColor(Track track) {
+        return regionOverride != null && regionOverride.getNegativeColor() != null
+                ? regionOverride.getNegativeColor() : track.getAltColor();
+    }
+
+    public DataRange getDataRange(Track track) {
+        if (regionOverride == null || regionOverride.getYAxisMode() == TrackRegionOverride.YAxisMode.DEFAULT) {
+            return track.getDataRange();
+        }
+        if (regionalDataRange == null) {
+            DataRange base = track.getDataRange();
+            if (base == null) return null;
+            if (regionOverride.getYAxisMode() == TrackRegionOverride.YAxisMode.FLIP) {
+                regionalDataRange = base.flipped();
+            } else if (regionOverride.getRangeMinimum() != null
+                    && regionOverride.getRangeBaseline() != null
+                    && regionOverride.getRangeMaximum() != null) {
+                regionalDataRange = new DataRange(
+                        regionOverride.getRangeMinimum(),
+                        regionOverride.getRangeBaseline(),
+                        regionOverride.getRangeMaximum(),
+                        base.isDrawBaseline(),
+                        Boolean.TRUE.equals(regionOverride.getLogScale()));
+                regionalDataRange.setMidlineColor(base.getMidlineColor());
+            } else {
+                regionalDataRange = base;
+            }
+        }
+        return regionalDataRange;
     }
 
     public void dispose() {

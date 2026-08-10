@@ -152,7 +152,7 @@ public abstract class DataTrack extends AbstractTrack implements ScalableTrack, 
 
     public void render(RenderContext context) {
 
-        List<LocusScore> inViewScores = getInViewScores(context.getReferenceFrame());
+        List<LocusScore> inViewScores = getInViewScores(context.getReferenceFrame(), context.getDisplayBinPlan());
 
         if ((inViewScores == null || inViewScores.size() == 0) && Globals.CHR_ALL.equals(context.getChr())) {
             Graphics2D g = context.getGraphic2DForColor(ZOOM_IN_TEXT_COLOR);
@@ -165,10 +165,15 @@ public abstract class DataTrack extends AbstractTrack implements ScalableTrack, 
 
     public List<LocusScore> getInViewScores(ReferenceFrame referenceFrame) {
 
+        return getInViewScores(referenceFrame, null);
+    }
+
+    private List<LocusScore> getInViewScores(ReferenceFrame referenceFrame, DisplayBinPlan explicitBinPlan) {
+
         LoadedDataInterval<List<LocusScore>> interval = loadedIntervalCache.get(referenceFrame.getName());
         String chr = referenceFrame.getChrName();
-        int start = (int) referenceFrame.getOrigin();
-        int end = (int) referenceFrame.getEnd() + 1;
+        int start = explicitBinPlan == null ? (int) referenceFrame.getOrigin() : explicitBinPlan.getRangeStart();
+        int end = explicitBinPlan == null ? (int) referenceFrame.getEnd() + 1 : explicitBinPlan.getRangeEnd();
         int zoom = referenceFrame.getZoom();
         if (interval == null || !(chr.equals(interval.range.chr))) { // Try the data we have, even if not perfect !interval.contains(chr, start, end, zoom)) {
             return Collections.EMPTY_LIST;
@@ -196,9 +201,15 @@ public abstract class DataTrack extends AbstractTrack implements ScalableTrack, 
             List<LocusScore> visibleScores = startIdx == 0 && endIdx == inViewScores.size() ?
                     inViewScores :
                     inViewScores.subList(startIdx, endIdx);
-            int requestedBins = Math.max(1,
-                    PreferencesManager.getPreferences().getAsInt(Constants.SCREENSHOT_DATA_BINS));
-            return NumericTrackBinner.bin(visibleScores, start, end, requestedBins);
+            DisplayBinPlan binPlan = explicitBinPlan;
+            if (binPlan == null) {
+                int requestedBins = Math.max(1,
+                        PreferencesManager.getPreferences().getAsInt(Constants.SCREENSHOT_DATA_BINS));
+                int displayStart = Math.max(0, (int) Math.floor(referenceFrame.getOrigin()));
+                int displayEnd = Math.max(displayStart + 1, (int) Math.ceil(referenceFrame.getEnd()));
+                binPlan = RegionDisplayBinPlanner.create(chr, displayStart, displayEnd, requestedBins);
+            }
+            return NumericTrackBinner.bin(visibleScores, binPlan);
         }
     }
 

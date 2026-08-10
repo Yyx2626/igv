@@ -35,6 +35,12 @@ For the original, unmodified IGV project, visit
 - **Reversible genomic display:** invert the horizontal genomic axis while
   keeping labels readable; feature and sequence direction indicators reverse
   with the view, and the state persists in JSON sessions.
+- **Regional display transformations (preview):** attach display-only rules to
+  regions of interest to collapse an interval, invert coordinates for selected
+  tracks, flip or customize regional Y ranges, and override background,
+  foreground, positive, or negative colors. Settings are available from Region
+  Navigator and region/track context menus, support nested inversions, and lock
+  ROI boundaries until reset. Some minor rendering and UI issues remain.
 - **Track pairing:** pair two tracks as top and bottom members, edit their data
   ranges together, autoscale paired sides independently, flip their Y axes and
   top/bottom positions together, and persist pairing in JSON sessions.

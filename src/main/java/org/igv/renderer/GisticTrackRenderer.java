@@ -63,7 +63,7 @@ public class GisticTrackRenderer {
         GisticTrack gisticTrack = (GisticTrack) track;
         String chr = context.getChr();
 
-        float maxQValue = transform(track.getDataRange().getMaximum());
+        float maxQValue = transform(context.getDataRange(track).getMaximum());
         if (maxQValue > 0) {
             double scale = (rect.getHeight() - 5) / maxQValue;
 

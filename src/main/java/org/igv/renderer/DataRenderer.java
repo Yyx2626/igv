@@ -57,7 +57,9 @@ public abstract class DataRenderer implements Renderer<LocusScore> {
             // has caused concurrent modification exceptions.
             synchronized (scores) {
                 renderScores(track, scores, context, rect);
-                renderAxis(track, context, rect);
+                if (!context.isRegionalPass()) {
+                    renderAxis(track, context, rect);
+                }
             }
         }
         renderGuides(track, context, rect);

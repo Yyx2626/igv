@@ -54,6 +54,7 @@ public class Session implements IGVEventObserver {
      * Map of chromosome -> regions of interest
      */
     private Map<String, Collection<RegionOfInterest>> regionsOfInterest;
+    private long regionsOfInterestRevision;
     //An Observable that notifies observers of changes to the regions of interest.  Its
     //setChangedAndNotify() method should be called after any regions change.
     private ObservableForObject<Map<String, Collection<RegionOfInterest>>> regionsOfInterestObservable;
@@ -286,6 +287,7 @@ public class Session implements IGVEventObserver {
         }
 
         //notify all observers that regions have changed.
+        regionsOfInterestRevision++;
         regionsOfInterestObservable.setChangedAndNotify();
         return result;
     }
@@ -301,6 +303,7 @@ public class Session implements IGVEventObserver {
         roiList.add(roi);
 
         //notify all observers that regions have changed.
+        regionsOfInterestRevision++;
         regionsOfInterestObservable.setChangedAndNotify();
     }
 
@@ -309,6 +312,20 @@ public class Session implements IGVEventObserver {
             regionsOfInterest.clear();
         }
         //notify all observers that regions have changed.
+        regionsOfInterestRevision++;
+        regionsOfInterestObservable.setChangedAndNotify();
+    }
+
+    public long getRegionsOfInterestRevision() {
+        return regionsOfInterestRevision;
+    }
+
+    /**
+     * Notify consumers after an existing ROI or its display rule is edited in place.
+     * Coordinate maps use the revision to invalidate cached collapse transforms.
+     */
+    public void notifyRegionsOfInterestChanged() {
+        regionsOfInterestRevision++;
         regionsOfInterestObservable.setChangedAndNotify();
     }
 
@@ -389,5 +406,3 @@ public class Session implements IGVEventObserver {
     }
 
 }
-
-

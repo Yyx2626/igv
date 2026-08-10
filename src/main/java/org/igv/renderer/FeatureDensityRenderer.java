@@ -32,7 +32,7 @@ public class FeatureDensityRenderer extends DataRenderer {
         double origin = context.getOrigin();
         double locScale = context.getScale();
 
-        double maxValue = track.getDataRange().getMaximum();
+        double maxValue = context.getDataRange(track).getMaximum();
 
         double yScaleFactor = rect.getHeight() / maxValue;
 
@@ -74,5 +74,4 @@ public class FeatureDensityRenderer extends DataRenderer {
     }
 
 }
-
 

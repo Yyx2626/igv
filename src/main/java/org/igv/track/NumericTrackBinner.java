@@ -14,18 +14,20 @@ final class NumericTrackBinner {
     }
 
     static List<LocusScore> bin(List<LocusScore> scores, int rangeStart, int rangeEnd, int requestedBins) {
-        if (scores == null || scores.isEmpty() || rangeEnd <= rangeStart || requestedBins <= 0) {
+        return bin(scores, DisplayBinPlan.create(rangeStart, rangeEnd, requestedBins, List.of()));
+    }
+
+    static List<LocusScore> bin(List<LocusScore> scores, DisplayBinPlan plan) {
+        if (scores == null || scores.isEmpty() || plan == null) {
             return scores;
         }
-
-        int span = rangeEnd - rangeStart;
-        int binCount = Math.min(requestedBins, span);
-        List<LocusScore> result = new ArrayList<>(binCount);
+        if (plan.getBins().isEmpty()) return List.of();
+        List<LocusScore> result = new ArrayList<>(plan.getBins().size());
         int firstCandidate = 0;
 
-        for (int binIndex = 0; binIndex < binCount; binIndex++) {
-            int binStart = rangeStart + (int) (((long) span * binIndex) / binCount);
-            int binEnd = rangeStart + (int) (((long) span * (binIndex + 1)) / binCount);
+        for (DisplayBinPlan.Bin bin : plan.getBins()) {
+            int binStart = bin.start();
+            int binEnd = bin.end();
 
             while (firstCandidate < scores.size() && scoreEnd(scores.get(firstCandidate)) <= binStart) {
                 firstCandidate++;

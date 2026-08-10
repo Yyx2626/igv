@@ -36,14 +36,14 @@ public class DynSeqRenderer extends XYPlotRenderer {
     @Override
     protected void drawDataPoint(Color graphColor, int dx, int pX, int baseY, int pY, LocusScore score, RenderContext context) {
 
-        int pixelsPerBP = (int) (1.0 / context.getReferenceFrame().getScale());
+        int pixelsPerBP = (int) (1.0 / context.getScale());
 
         if (pixelsPerBP < 2) {
             barChartRenderer.drawDataPoint(graphColor, dx, pX, baseY, pY, score, context);
         } else {
             String chr = context.getChr();
-            double origin = context.getReferenceFrame().getOrigin();
-            double locScale = context.getReferenceFrame().getScale();
+            double origin = context.getOrigin();
+            double locScale = context.getScale();
             dx = (int) Math.ceil(1 / locScale) + 1;
             byte [] seq = GenomeManager.getInstance().getCurrentGenome().getSequence(chr, score.getStart(), score.getEnd());
             for(int pos = score.getStart(); pos < score.getEnd(); pos++) {

@@ -249,7 +249,7 @@ public class IGVFeatureRenderer extends FeatureRenderer {
 
                         if (verticalSpaceRequiredForText <= trackRectangle.height) {
                             lastNamePixelEnd = drawFeatureName(name, track.getDisplayMode(), nameStart, nameEnd,
-                                    lastNamePixelEnd, fontGraphics, textBaselineY);
+                                    lastNamePixelEnd, fontGraphics, textBaselineY, context);
                         }
                     }
                 }
@@ -577,7 +577,8 @@ public class IGVFeatureRenderer extends FeatureRenderer {
                                       int pixelEnd,
                                       int lastFeatureEndedAtPixelX,
                                       Graphics2D g2D,
-                                      int textBaselineY) {
+                                      int textBaselineY,
+                                      RenderContext context) {
 
         FontMetrics fm = g2D.getFontMetrics();
         int fontSize = fm.getFont().getSize();
@@ -587,7 +588,13 @@ public class IGVFeatureRenderer extends FeatureRenderer {
         Rectangle2D sb = fm.getStringBounds(name, g2D);
 
 
-        if (nameStart > (lastFeatureEndedAtPixelX + fontSize) && sb.getWidth() < g2D.getClipBounds().getWidth()) {
+        // Use semantic segment bounds, not Graphics2D's transformed/repaint clip.  In a
+        // mirrored regional pass getClipBounds() can be expressed in a different logical
+        // coordinate space, which incorrectly suppresses every label in the region.
+        Rectangle clip = context.getLabelClipBounds();
+        if (nameStart > (lastFeatureEndedAtPixelX + fontSize)
+                && clip != null
+                && isLabelAllowed(nameStart, nameWidth, sb.getWidth(), clip, context.isRegionalPass())) {
 
             // g2D.clearRect(xString2, textBaselineY, (int) stringBounds.getWidth(), (int) stringBounds.getHeight());
             GraphicUtils.drawStringUpright(g2D, name, nameStart, textBaselineY);
@@ -595,6 +602,17 @@ public class IGVFeatureRenderer extends FeatureRenderer {
         }
 
         return lastFeatureEndedAtPixelX;
+    }
+
+    static boolean isLabelFullyInsideClip(int labelStart, int labelWidth, Rectangle clip) {
+        return clip != null && labelStart >= clip.x
+                && labelStart + labelWidth <= clip.x + clip.width;
+    }
+
+    static boolean isLabelAllowed(int labelStart, int labelWidth, double measuredWidth,
+                                  Rectangle clip, boolean regionalPass) {
+        return regionalPass || (measuredWidth < clip.getWidth()
+                && isLabelFullyInsideClip(labelStart, labelWidth, clip));
     }
 
     /**

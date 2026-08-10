@@ -10,7 +10,9 @@ import org.igv.prefs.Constants;
 import org.igv.prefs.PreferencesManager;
 import org.igv.track.AverageErrorBarTrack;
 import org.igv.track.DataTrack;
+import org.igv.track.DisplayBinPlan;
 import org.igv.track.MergedTracks;
+import org.igv.track.RegionDisplayBinPlanner;
 import org.igv.track.SequenceTrack;
 import org.igv.track.Track;
 import org.igv.ui.IGV;
@@ -64,19 +66,23 @@ public final class ScreenshotDataExporter {
                 int rangeEnd = Math.max(rangeStart + 1, (int) Math.ceil(frame.getEnd()));
                 int span = rangeEnd - rangeStart;
                 SequenceSlice sequenceSlice = sequenceSlices.get(frame);
-                int bins = sequenceSlice == null
+                int targetBins = sequenceSlice == null
                         ? Math.max(1, Math.min(Math.max(1, requestedBins), span))
                         : span;
+                DisplayBinPlan binPlan = RegionDisplayBinPlanner.create(
+                        frame.getChrName(), rangeStart, rangeEnd, targetBins);
+                List<DisplayBinPlan.Bin> bins = binPlan.getBins();
                 Map<DataTrack, List<LocusScore>> scoreCache = new HashMap<>();
                 for (Column column : columns) {
                     scoreCache.computeIfAbsent(column.track,
                             track -> track.getSummaryScores(frame.getChrName(), rangeStart, rangeEnd, frame.getZoom()).getFeatures());
                 }
 
-                for (int displayIndex = 0; displayIndex < bins; displayIndex++) {
-                    int binIndex = frame.isInverted() ? bins - 1 - displayIndex : displayIndex;
-                    int binStart = rangeStart + (int) (((long) span * binIndex) / bins);
-                    int binEnd = rangeStart + (int) (((long) span * (binIndex + 1)) / bins);
+                for (int displayIndex = 0; displayIndex < bins.size(); displayIndex++) {
+                    int binIndex = frame.isInverted() ? bins.size() - 1 - displayIndex : displayIndex;
+                    DisplayBinPlan.Bin bin = bins.get(binIndex);
+                    int binStart = bin.start();
+                    int binEnd = bin.end();
                     writer.write(clean(frame.getChrName()) + "\t" + binStart + "\t" + binEnd);
                     if (frames.size() > 1) writer.write("\t" + clean(frame.getName()));
                     if (includeSequence) {

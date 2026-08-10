@@ -5,6 +5,7 @@ import org.igv.data.AverageErrorBarDataSource;
 import org.igv.data.CombinedDataSource;
 import org.igv.feature.Locus;
 import org.igv.feature.RegionOfInterest;
+import org.igv.feature.RegionDisplayRule;
 import org.igv.feature.genome.Genome;
 import org.igv.feature.genome.GenomeManager;
 import org.igv.feature.genome.load.GenomeConfig;
@@ -505,7 +506,12 @@ public class JSONSessionReader implements SessionReader {
                             // "name" is used for description in igv.js sessions
                             description = featureJson.optString("name", null);
                         }
-                        RegionOfInterest roi = new RegionOfInterest(chr, start, end, description);
+                        String id = featureJson.optString("id", null);
+                        RegionOfInterest roi = new RegionOfInterest(chr, start, end, description, id);
+                        JSONObject displayRuleJson = featureJson.optJSONObject("displayRule");
+                        if (displayRuleJson != null) {
+                            roi.setDisplayRule(RegionDisplayRule.fromJson(displayRuleJson));
+                        }
                         session.addRegionOfInterest(roi);
                     }
                 }

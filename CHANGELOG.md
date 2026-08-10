@@ -5,6 +5,23 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
 
 ## August 10, 2026
 
+- Added a preview of ROI-level display transformations. Regions can collapse
+  from the display, invert coordinates for all or selected tracks, flip or
+  customize regional Y ranges, and override background, foreground, positive,
+  and negative colors without changing source data.
+- Redesigned Region Navigator around a compact **Regional Settings** editor with
+  row/column multi-selection, copy/paste, color and Y-axis controls,
+  positive/negative color swapping, and cell/row/column/all reset actions. The
+  same editor is available from region and in-region track context menus.
+- Added boundary-aware regional binning and piecewise coordinate mapping:
+  off-screen ROIs do not create bins, bins split at visible ROI boundaries,
+  nested coordinate/Y inversions compose, and paired-track Y flips exchange the
+  affected segment between partners. Active settings lock ROI boundaries until
+  reset.
+- Fixed annotation labels disappearing inside coordinate-inverted regions,
+  extended transparent-border region fills through boundary pixels, and
+  prevented exported SVG bars from crossing the zero-axis line. Regional
+  settings remain a preview with some known minor rendering/UI bugs.
 - Added automatic build identity to About IGV and terminal startup output:
   upstream/customization version, commit (including dirty state), deterministic
   `src/main/` tree SHA-256, build time, and SHA-256 of the running `igv.jar`. About

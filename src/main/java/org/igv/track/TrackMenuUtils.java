@@ -9,6 +9,7 @@ import org.igv.data.AbstractDataSource;
 import org.igv.feature.Exon;
 import org.igv.feature.IGVFeature;
 import org.igv.feature.Range;
+import org.igv.feature.RegionOfInterest;
 import org.igv.feature.Strand;
 import org.igv.feature.basepair.BasePairTrack;
 import org.igv.feature.genome.Genome;
@@ -34,6 +35,7 @@ import org.igv.ui.color.ColorUtilities;
 import org.igv.ui.panel.FrameManager;
 import org.igv.ui.panel.IGVPopupMenu;
 import org.igv.ui.panel.ReferenceFrame;
+import org.igv.ui.panel.RegionalSettingsDialog;
 import org.igv.ui.panel.TrackPanel;
 import org.igv.ui.panel.TrackPanelScrollPane;
 import org.igv.ui.panel.TrackSelectionPanel;
@@ -81,6 +83,8 @@ public class TrackMenuUtils {
             log.debug("enter getPopupMenu");
         }
 
+        RegionOfInterest clickedRegion = findRegionAt(te);
+
         // Try multi-track menu first.  If multiple tracks are selected a menu with a subset of shared items is
         // created.  If the track clicked is not one of the selected tracks selections are cleared and we proceed
         // as usual with a single-track menu.  This behavior mimics google sheets.
@@ -92,6 +96,8 @@ public class TrackMenuUtils {
                 multiTitle.setFont(FontManager.getFont(Font.BOLD, 12));
                 multiMenu.add(multiTitle);
                 multiMenu.addSeparator();
+
+                addRegionalSettingsItem(multiMenu, clickedRegion, track, te);
 
                 for (Component item : getSharedMenuItems(selectedTracks)) {
                     multiMenu.add(item);
@@ -203,6 +209,8 @@ public class TrackMenuUtils {
         menu.add(popupTitle);
         menu.addSeparator();
 
+        addRegionalSettingsItem(menu, clickedRegion, track, te);
+
         // Items most tracks share
         if (track.getType() != TrackType.sequence) {
             for (Component item : getSharedMenuItems(Collections.singleton(track))) {
@@ -253,6 +261,30 @@ public class TrackMenuUtils {
 
         return menu;
 
+    }
+
+    private static RegionOfInterest findRegionAt(TrackClickEvent event) {
+        if (event == null || event.getFrame() == null) return null;
+        Collection<RegionOfInterest> regions = IGV.getInstance().getSession()
+                .getRegionsOfInterest(event.getFrame().getChrName());
+        if (regions == null) return null;
+        double position = event.getChromosomePosition();
+        // Prefer the most specific region when regions are nested.
+        return regions.stream()
+                .filter(region -> position >= region.getStart() && position < region.getEnd())
+                .min(Comparator.comparingInt(RegionOfInterest::getLength))
+                .orElse(null);
+    }
+
+    private static void addRegionalSettingsItem(JPopupMenu menu, RegionOfInterest region,
+                                                Track track, TrackClickEvent event) {
+        if (region == null) return;
+        JMenuItem item = new JMenuItem("Regional settings...");
+        item.addActionListener(action -> RegionalSettingsDialog.showDialog(
+                event == null || event.getMouseEvent() == null ? null : event.getMouseEvent().getComponent(),
+                region, track));
+        menu.add(item);
+        menu.addSeparator();
     }
 
     public static void saveImage(Track track, String extension) {

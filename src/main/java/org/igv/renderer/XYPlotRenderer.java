@@ -39,13 +39,13 @@ public abstract class XYPlotRenderer extends DataRenderer {
         double origin = context.getOrigin();
         double locScale = context.getScale();
 
-        Color posColor = track.getColor();
-        Color negColor = track.getAltColor();
+        Color posColor = context.getPositiveColor(track);
+        Color negColor = context.getNegativeColor(track);
 
         // Get the Y axis definition, consisting of minimum, maximum, and base value.  Often
         // the base value is == min value which is == 0.
 
-        DataRange dataRange = track.getDataRange();
+        DataRange dataRange = context.getDataRange(track);
         float maxValue = dataRange.getMaximum();
         float baseValue = dataRange.getBaseline();
         float minValue = dataRange.getMinimum();
@@ -64,12 +64,8 @@ public abstract class XYPlotRenderer extends DataRenderer {
 
         // Calculate the Y position in pixels of the base value.  Clip to bounds of rectangle
         double baseDelta = maxValue - baseValue;
-        int baseY = (int) (rect.getY() + baseDelta * yScaleFactor);
-        if (baseY < rect.y) {
-            baseY = rect.y;
-        } else if (baseY > rect.y + rect.height) {
-            baseY = rect.y + rect.height;
-        }
+        double rawBaseY = rect.getY() + baseDelta * yScaleFactor;
+        int baseY = clampYPixel(rect, rawBaseY);
 
         for (LocusScore score : locusScores) {
 
@@ -92,12 +88,7 @@ public abstract class XYPlotRenderer extends DataRenderer {
 
                 // Compute the pixel y location.  Clip to bounds of rectangle.
                 double dy = isLog ? Math.log10(dataY) - baseValue : (dataY - baseValue);
-                int pY = baseY - (int) (dy * yScaleFactor);
-                if (pY < rect.y) {
-                    pY = rect.y;
-                } else if (pY > rect.y + rect.height) {
-                    pY = rect.y + rect.height;
-                }
+                int pY = clampYPixel(rect, rawBaseY - (int) (dy * yScaleFactor));
 
                 Color color = (dataY >= baseValue) ? posColor : negColor;
                 drawDataPoint(color, (int) dx, (int) pX, baseY, pY, score, context);
@@ -125,7 +116,7 @@ public abstract class XYPlotRenderer extends DataRenderer {
 
         IGVPreferences prefs = PreferencesManager.getPreferences();
 
-        Color labelColor = prefs.getAsBoolean(CHART_COLOR_TRACK_NAME) ? track.getColor() : Color.black;
+        Color labelColor = prefs.getAsBoolean(CHART_COLOR_TRACK_NAME) ? context.getPositiveColor(track) : Color.black;
         Graphics2D labelGraphics = context.getScreenGraphic2DForColor(labelColor);
 
         labelGraphics.setFont(FontManager.getFont(8));
@@ -144,7 +135,7 @@ public abstract class XYPlotRenderer extends DataRenderer {
 
             Rectangle axisRect = new Rectangle(arect.x, arect.y + 1, AXIS_AREA_WIDTH, arect.height);
 
-            DataRange axisDefinition = track.getDataRange();
+            DataRange axisDefinition = context.getDataRange(track);
             float maxValue = axisDefinition.getMaximum();
             float baseValue = axisDefinition.getBaseline();
             float minValue = axisDefinition.getMinimum();
@@ -183,7 +174,7 @@ public abstract class XYPlotRenderer extends DataRenderer {
             }
 
         } else if (track.isShowDataRange() && arect.height > 20) {
-            drawScale(track.getDataRange(), context, arect);
+            drawScale(context.getDataRange(track), context, arect);
         }
     }
 
@@ -198,7 +189,7 @@ public abstract class XYPlotRenderer extends DataRenderer {
             ///TrackProperties pros = track.getProperties();
 
             // midline
-            DataRange axisDefinition = track.getDataRange();
+            DataRange axisDefinition = context.getDataRange(track);
             float maxValue = axisDefinition.getMaximum();
             float baseValue = axisDefinition.getBaseline();
             float minValue = axisDefinition.getMinimum();
@@ -276,6 +267,17 @@ public abstract class XYPlotRenderer extends DataRenderer {
         // exactly on that excluded row, so a value at/near the data range's max (e.g. the "Mid"
         // guide line when set at a track's own bottom edge) gets computed but never actually
         // painted - looks identical to being clipped away.
-        return (int) Math.max(drawingRect.getMinY(), Math.min(drawingRect.getMaxY() - 1, pY));
+        return clampYPixel(drawingRect, pY);
+    }
+
+    /**
+     * Clamp to actual paintable rows.  AWT rectangles are half-open: y + height is outside the
+     * rectangle.  Keeping bars and guide lines on this same boundary is especially important for
+     * SVG, where a filled rectangle ending at y + height would visibly extend past the baseline.
+     */
+    static int clampYPixel(Rectangle drawingRect, double pixelY) {
+        if (drawingRect.height <= 0) return drawingRect.y;
+        return (int) Math.max(drawingRect.getMinY(),
+                Math.min(drawingRect.getMaxY() - 1, pixelY));
     }
 }

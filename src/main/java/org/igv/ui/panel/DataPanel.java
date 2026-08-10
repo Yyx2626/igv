@@ -14,6 +14,8 @@ import org.igv.event.DataLoadedEvent;
 import org.igv.event.IGVEvent;
 import org.igv.event.IGVEventObserver;
 import org.igv.feature.RegionOfInterest;
+import org.igv.feature.RegionDisplayRule;
+import org.igv.feature.TrackRegionOverride;
 import org.igv.logging.LogManager;
 import org.igv.logging.Logger;
 import org.igv.prefs.Constants;
@@ -21,6 +23,9 @@ import org.igv.prefs.PreferencesManager;
 import org.igv.track.RenderContext;
 import org.igv.track.Track;
 import org.igv.track.TrackClickEvent;
+import org.igv.track.TrackPairing;
+import org.igv.track.DisplayBinPlan;
+import org.igv.track.RegionDisplayBinPlanner;
 import org.igv.ui.AbstractDataPanelTool;
 import org.igv.ui.IGV;
 import org.igv.ui.UIConstants;
@@ -37,6 +42,8 @@ import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
 import java.text.DecimalFormat;
 import java.util.Collection;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.TimerTask;
 
@@ -158,10 +165,20 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             trackRectangle.y = 0;
             final Rectangle clipBounds = g.getClipBounds();
 
-            trackGraphics = createTrackGraphics(graphics2D, getWidth());
-            context = new RenderContext(this, trackGraphics, frame, trackRectangle, visibleRect, clipBounds);
+            drawRegionFills(graphics2D, trackRectangle, false);
 
-            painter.paint(getTrack(), context);
+            RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
+            if (coordinateMap.hasCollapsedIntervals()) {
+                paintTrackWithDisplaySegments(getTrack(), null, graphics2D, trackRectangle,
+                        visibleRect, clipBounds, null, null, coordinateMap);
+            } else {
+                trackGraphics = createTrackGraphics(graphics2D, getWidth());
+                context = new RenderContext(this, trackGraphics, frame, trackRectangle, visibleRect, clipBounds);
+                context.setLabelClipBounds(trackRectangle);
+                painter.paint(getTrack(), context);
+            }
+            paintTrackRegionOverrides(graphics2D, trackRectangle, visibleRect, clipBounds);
+            drawRegionFills(graphics2D, trackRectangle, true);
 
             // If there is a partial ROI in progress draw it first
             if (currentTool instanceof RegionOfInterestTool) {
@@ -216,16 +233,26 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         try {
             g.setColor(getEffectiveTrackBackground());
             g.fillRect(rect.x, rect.y, rect.width, rect.height);
-            trackGraphics = createTrackGraphics(g, rect.width);
-            context = new RenderContext(null, trackGraphics, frame, rect, rect, rect);
-            Insets insets = getInsets();
-            Rectangle contentRect = new Rectangle(
-                    rect.x + insets.left,
-                    rect.y + insets.top,
-                    rect.width - (insets.left + insets.right),
-                    rect.height - (insets.top + insets.bottom));
-            context.getGraphics().setClip(contentRect);
-            painter.paint(getTrack(), context);
+            drawRegionFills(g, rect, false);
+            RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
+            if (coordinateMap.hasCollapsedIntervals()) {
+                paintTrackWithDisplaySegments(getTrack(), null, g, rect, rect, rect,
+                        null, null, coordinateMap);
+            } else {
+                trackGraphics = createTrackGraphics(g, rect.width);
+                context = new RenderContext(null, trackGraphics, frame, rect, rect, rect);
+                Insets insets = getInsets();
+                Rectangle contentRect = new Rectangle(
+                        rect.x + insets.left,
+                        rect.y + insets.top,
+                        rect.width - (insets.left + insets.right),
+                        rect.height - (insets.top + insets.bottom));
+                context.getGraphics().setClip(contentRect);
+                context.setLabelClipBounds(contentRect);
+                painter.paint(getTrack(), context);
+            }
+            paintTrackRegionOverrides(g, rect, rect, rect);
+            drawRegionFills(g, rect, true);
             drawAllRegions(g);
 
         } finally {
@@ -239,7 +266,11 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
     }
 
     private Color getEffectiveTrackBackground() {
-        Color override = getTrack() == null ? null : getTrack().getBackgroundColorOverride();
+        return getEffectiveTrackBackground(getTrack());
+    }
+
+    private Color getEffectiveTrackBackground(Track track) {
+        Color override = track == null ? null : track.getBackgroundColorOverride();
         return override != null ? override
                 : darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.TRACK_BACKGROUND_COLOR)
                 ? UIManager.getColor("Panel.background")
@@ -253,6 +284,242 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             result.scale(-1, 1);
         }
         return result;
+    }
+
+    private void drawRegionFills(Graphics2D source, Rectangle trackRect, boolean foreground) {
+        Collection<RegionOfInterest> regions =
+                IGV.getInstance().getSession().getRegionsOfInterest(frame.getChrName());
+        if (regions == null || regions.isEmpty()) return;
+
+        double viewportStart = frame.getOrigin();
+        double viewportEnd = frame.getEnd();
+        Graphics2D graphics = (Graphics2D) source.create();
+        try {
+            graphics.clip(trackRect);
+            for (RegionOfInterest region : regions) {
+                RegionDisplayRule rule = region.getDisplayRule();
+                if (rule == null || rule.isCollapsed()) continue;
+                Color color = foreground ? rule.getRegionForegroundColor() : rule.getRegionBackgroundColor();
+                if (color == null) continue;
+                if (region.getEnd() <= viewportStart || region.getStart() >= viewportEnd) continue;
+                int first = frame.getScreenPosition(Math.max(viewportStart, region.getStart()));
+                int second = frame.getScreenPosition(Math.min(viewportEnd, region.getEnd()));
+                int x = Math.min(first, second);
+                // Include both boundary pixels so the region fill covers the ROI border area.
+                int width = Math.max(1, Math.abs(second - first) + 1);
+                graphics.setColor(color);
+                graphics.fillRect(x, trackRect.y, width, trackRect.height);
+            }
+        } finally {
+            graphics.dispose();
+        }
+    }
+
+    private void paintTrackRegionOverrides(Graphics2D source, Rectangle trackRect,
+                                           Rectangle visibleRect, Rectangle clipBounds) {
+        Track track = getTrack();
+        if (track == null || track.getId() == null) return;
+        Collection<RegionOfInterest> allRegions =
+                IGV.getInstance().getSession().getRegionsOfInterest(frame.getChrName());
+        if (allRegions == null || allRegions.isEmpty()) return;
+
+        double viewportStart = frame.getOrigin();
+        double viewportEnd = frame.getEnd();
+        ArrayList<RegionOfInterest> regions = new ArrayList<>();
+        for (RegionOfInterest region : allRegions) {
+            RegionDisplayRule rule = region.getDisplayRule();
+            if (rule == null || rule.isCollapsed()
+                    || region.getEnd() <= viewportStart || region.getStart() >= viewportEnd) continue;
+            TrackRegionOverride override = rule.getTrackOverride(track.getId());
+            if (override != null && override.hasAnyEffect()) regions.add(region);
+        }
+        regions.sort(Comparator.comparingInt(region -> region.getDisplayRule().getPriority()));
+
+        if (regions.isEmpty()) return;
+
+        for (RegionalTrackSlice slice : createRegionalTrackSlices(
+                regions, allRegions, track, viewportStart, viewportEnd)) {
+            TrackRegionOverride override = slice.override();
+            Track renderTrack = track;
+            TrackRegionOverride renderOverride = override;
+            if (override.getYAxisMode() == TrackRegionOverride.YAxisMode.FLIP && TrackPairing.isPaired(track)) {
+                Track partner = TrackPairing.findPartner(track, IGV.getInstance().getAllTracks());
+                if (partner != null) {
+                    renderTrack = partner;
+                }
+            }
+            int first = frame.getScreenPosition(slice.start());
+            int second = frame.getScreenPosition(slice.end());
+            Rectangle regionRect = new Rectangle(
+                    Math.min(first, second), trackRect.y,
+                    Math.max(1, Math.abs(second - first) + 1), trackRect.height);
+
+            Graphics2D background = (Graphics2D) source.create();
+            try {
+                background.clip(regionRect);
+                background.setComposite(AlphaComposite.Src);
+                background.setColor(getEffectiveTrackBackground(renderTrack));
+                background.fill(regionRect);
+                background.setComposite(AlphaComposite.SrcOver);
+                if (renderOverride.getBackgroundColor() != null) {
+                    background.setColor(renderOverride.getBackgroundColor());
+                    background.fill(regionRect);
+                } else if (slice.highlightColor() != null) {
+                    background.setColor(slice.highlightColor());
+                    background.fill(regionRect);
+                }
+            } finally {
+                background.dispose();
+            }
+
+            RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
+            if (coordinateMap.hasCollapsedIntervals()) {
+                paintTrackWithDisplaySegments(renderTrack, renderOverride, source, trackRect,
+                        visibleRect, clipBounds, slice.start(), slice.end(), coordinateMap);
+            } else {
+                Graphics2D clippedSource = (Graphics2D) source.create();
+                Graphics2D regionalTrackGraphics = null;
+                RenderContext regionalContext = null;
+                try {
+                    clippedSource.clip(regionRect);
+                    if (renderOverride.isReverseX()) {
+                        clippedSource.translate(2.0 * regionRect.x + regionRect.width, 0);
+                        clippedSource.scale(-1, 1);
+                    }
+                    regionalTrackGraphics = createTrackGraphics(clippedSource, trackRect.width);
+                    regionalContext = new RenderContext(this, regionalTrackGraphics, frame,
+                            trackRect, visibleRect, regionRect);
+                    regionalContext.setLabelClipBounds(regionRect);
+                    regionalContext.setRegionOverride(renderOverride);
+                    regionalContext.setRegionalPass(true);
+                    painter.paint(renderTrack, regionalContext);
+                } finally {
+                    if (regionalContext != null) regionalContext.dispose();
+                    if (regionalTrackGraphics != null) regionalTrackGraphics.dispose();
+                    clippedSource.dispose();
+                }
+            }
+
+            if (renderOverride.getForegroundMaskColor() != null) {
+                Graphics2D foreground = (Graphics2D) source.create();
+                try {
+                    foreground.clip(regionRect);
+                    foreground.setColor(renderOverride.getForegroundMaskColor());
+                    foreground.fill(regionRect);
+                } finally {
+                    foreground.dispose();
+                }
+            }
+        }
+    }
+
+    /**
+     * Partition overlapping rules into non-overlapping slices. Coordinate inversion and Y flip
+     * compose by XOR, so a nested second inversion restores the source orientation.
+     */
+    private List<RegionalTrackSlice> createRegionalTrackSlices(List<RegionOfInterest> regions,
+                                                               Collection<RegionOfInterest> allRegions,
+                                                               Track track,
+                                                               double viewportStart, double viewportEnd) {
+        List<Double> boundaries = new ArrayList<>();
+        for (RegionOfInterest region : regions) {
+            boundaries.add(Math.max(viewportStart, (double) region.getStart()));
+            boundaries.add(Math.min(viewportEnd, (double) region.getEnd()));
+        }
+        boundaries = boundaries.stream().distinct().sorted().toList();
+        List<RegionOfInterest> displayOrder = allRegions.stream()
+                .filter(region -> region.getDisplayRule() != null)
+                .sorted(Comparator.comparingInt(region -> region.getDisplayRule().getPriority()))
+                .toList();
+        List<RegionalTrackSlice> result = new ArrayList<>();
+        for (int i = 0; i + 1 < boundaries.size(); i++) {
+            double start = boundaries.get(i);
+            double end = boundaries.get(i + 1);
+            if (end <= start) continue;
+            double midpoint = start + (end - start) / 2.0;
+            List<RegionOfInterest> covering = regions.stream()
+                    .filter(region -> region.getStart() <= midpoint && region.getEnd() > midpoint)
+                    .toList();
+            if (covering.isEmpty()) continue;
+            TrackRegionOverride effective = composeOverrides(covering, track);
+            Color highlight = null;
+            for (RegionOfInterest region : displayOrder) {
+                RegionDisplayRule rule = region.getDisplayRule();
+                if (!rule.isCollapsed() && region.getStart() <= midpoint && region.getEnd() > midpoint
+                        && rule.getRegionBackgroundColor() != null) {
+                    highlight = rule.getRegionBackgroundColor();
+                }
+            }
+            result.add(new RegionalTrackSlice(start, end, effective, highlight));
+        }
+        return result;
+    }
+
+    private TrackRegionOverride composeOverrides(List<RegionOfInterest> regions, Track track) {
+        List<TrackRegionOverride> overrides = new ArrayList<>();
+        for (RegionOfInterest region : regions) {
+            overrides.add(region.getDisplayRule().getTrackOverride(track.getId()));
+        }
+        return TrackRegionOverride.compose(overrides);
+    }
+
+    private record RegionalTrackSlice(double start, double end, TrackRegionOverride override,
+                                      Color highlightColor) {
+    }
+
+    private void paintTrackWithDisplaySegments(Track track, TrackRegionOverride override,
+                                               Graphics2D source, Rectangle trackRect,
+                                               Rectangle visibleRect, Rectangle clipBounds,
+                                               Double limitingStart, Double limitingEnd,
+                                               RegionDisplayCoordinateMap coordinateMap) {
+        int rangeStart = Math.max(0, (int) Math.floor(frame.getOrigin()));
+        int rangeEnd = Math.max(rangeStart + 1, (int) Math.ceil(frame.getEnd()));
+        int requestedBins = Math.max(1,
+                PreferencesManager.getPreferences().getAsInt(Constants.SCREENSHOT_DATA_BINS));
+        DisplayBinPlan fullPlan = RegionDisplayBinPlanner.create(
+                frame.getChrName(), rangeStart, rangeEnd, requestedBins);
+
+        for (RegionDisplayCoordinateMap.Segment segment : coordinateMap.getSegments()) {
+            double genomicStart = segment.genomicStart();
+            double genomicEnd = segment.genomicEnd();
+            if (limitingStart != null && limitingEnd != null) {
+                genomicStart = Math.max(genomicStart, limitingStart);
+                genomicEnd = Math.min(genomicEnd, limitingEnd);
+                if (genomicEnd <= genomicStart) continue;
+            }
+            int first = coordinateMap.getScreenPosition(genomicStart);
+            int second = coordinateMap.getScreenPosition(genomicEnd);
+            Rectangle screenRect = new Rectangle(Math.min(first, second), trackRect.y,
+                    Math.max(1, Math.abs(second - first)), trackRect.height);
+
+            Graphics2D segmentSource = (Graphics2D) source.create();
+            Graphics2D segmentTrackGraphics = null;
+            RenderContext segmentContext = null;
+            try {
+                segmentSource.clip(screenRect);
+                segmentSource.translate(screenRect.x, 0);
+                if (override != null && override.isReverseX()) {
+                    segmentSource.translate(screenRect.width, 0);
+                    segmentSource.scale(-1, 1);
+                }
+                segmentTrackGraphics = createTrackGraphics(segmentSource, screenRect.width);
+                Rectangle localTrackRect = new Rectangle(0, trackRect.y, screenRect.width, trackRect.height);
+                Rectangle localVisibleRect = new Rectangle(0, visibleRect.y, screenRect.width, visibleRect.height);
+                segmentContext = new RenderContext(this, segmentTrackGraphics, frame,
+                        localTrackRect, localVisibleRect, localTrackRect);
+                segmentContext.setLabelClipBounds(localTrackRect);
+                segmentContext.setViewTransform(genomicStart, genomicEnd, coordinateMap.getDisplayScale());
+                segmentContext.setDisplayBinPlan(fullPlan.subset(
+                        (int) Math.floor(genomicStart), (int) Math.ceil(genomicEnd)));
+                segmentContext.setRegionOverride(override);
+                segmentContext.setRegionalPass(override != null || screenRect.x != 0);
+                painter.paint(track, segmentContext);
+            } finally {
+                if (segmentContext != null) segmentContext.dispose();
+                if (segmentTrackGraphics != null) segmentTrackGraphics.dispose();
+                segmentSource.dispose();
+            }
+        }
     }
 
     @Override
@@ -398,7 +665,7 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             return;
         }
 
-        double position = frame.getChromosomePosition(x);
+        double position = getTrackSourcePosition(x, track);
 
         List<MouseableRegion> regions = parent.getMouseRegions();
         StringBuffer popupTextBuffer = new StringBuffer();
@@ -570,7 +837,7 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         }
 
         private void doPopupMenu(MouseEvent e) {
-            TrackClickEvent te = new TrackClickEvent(e, frame);
+            TrackClickEvent te = new TrackClickEvent(e, frame, getTrackSourcePosition(e.getX(), getTrack()));
             parent.openPopupMenu(te);
         }
 
@@ -677,7 +944,7 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
                     frame.doIncrementZoom(-1, locationClicked);
                     e.consume();
                 } else if ((e.isMetaDown() || e.isControlDown()) && track != null) {
-                    TrackClickEvent te = new TrackClickEvent(e, frame);
+                    TrackClickEvent te = new TrackClickEvent(e, frame, getTrackSourcePosition(e.getX(), track));
                     if (track.handleDataClick(te)) {
                         e.consume();
                     }
@@ -705,7 +972,7 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
                                 if (source instanceof DataPanel) {
 
                                     if (track != null) {
-                                        TrackClickEvent te = new TrackClickEvent(e, frame);
+                                        TrackClickEvent te = new TrackClickEvent(e, frame, getTrackSourcePosition(e.getX(), track));
 
                                         boolean handled = track.handleDataClick(te);
 
@@ -722,6 +989,39 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             }
         }
 
+    }
+
+    double getTrackSourcePosition(int screenX, Track track) {
+        double position = frame.getChromosomePosition(screenX);
+        if (track == null || track.getId() == null) return position;
+        Collection<RegionOfInterest> regions =
+                IGV.getInstance().getSession().getRegionsOfInterest(frame.getChrName());
+        if (regions == null || regions.isEmpty()) return position;
+
+        RegionOfInterest selected = null;
+        int selectedPriority = Integer.MIN_VALUE;
+        for (RegionOfInterest region : regions) {
+            if (position < region.getStart() || position >= region.getEnd()) continue;
+            RegionDisplayRule rule = region.getDisplayRule();
+            TrackRegionOverride override = rule == null ? null : rule.getTrackOverride(track.getId());
+            if (override != null && override.isReverseX() && rule.getPriority() >= selectedPriority) {
+                selected = region;
+                selectedPriority = rule.getPriority();
+            }
+        }
+        if (selected == null) return position;
+        double visibleStart = Math.max(frame.getOrigin(), selected.getStart());
+        double visibleEnd = Math.min(frame.getEnd(), selected.getEnd());
+        RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
+        for (RegionDisplayCoordinateMap.Segment segment : coordinateMap.getSegments()) {
+            if (position >= segment.genomicStart() && position <= segment.genomicEnd()) {
+                visibleStart = Math.max(visibleStart, segment.genomicStart());
+                visibleEnd = Math.min(visibleEnd, segment.genomicEnd());
+                break;
+            }
+        }
+        double reversed = visibleStart + visibleEnd - position;
+        return Math.max(visibleStart, Math.min(Math.nextDown(visibleEnd), reversed));
     }
 
     /**

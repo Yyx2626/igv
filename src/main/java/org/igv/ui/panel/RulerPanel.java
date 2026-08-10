@@ -272,7 +272,9 @@ public class RulerPanel extends JPanel {
 
         g.setFont(spanFont);
 
-        int range = (int) (frame.getScale() * w) + 1;
+        RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
+        int range = (int) Math.ceil(coordinateMap.hasCollapsedIntervals()
+                ? coordinateMap.getVisibleSpan() : frame.getScale() * w) + 1;
 
         // TODO -- hack, assumes location unit for whole genome is kilo-base
         boolean scaleInKB = frame.getChrName().equals(Globals.CHR_ALL);
@@ -300,6 +302,8 @@ public class RulerPanel extends JPanel {
 
     private void drawTicks(Graphics g) {
 
+        frame.refreshRegionDisplayCoordinateMap();
+
         int w = getWidth();
         if (w < 200) {
             return;
@@ -310,7 +314,9 @@ public class RulerPanel extends JPanel {
         // location unit for whole genome is kilobase
         boolean scaleInKB = frame.getChrName().equals(Globals.CHR_ALL);
 
-        int range = (int) (w * frame.getScale());
+        RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
+        int range = (int) Math.ceil(coordinateMap.hasCollapsedIntervals()
+                ? coordinateMap.getVisibleSpan() : w * frame.getScale());
         TickSpacing ts = findSpacing(range, scaleInKB);
         double spacing = ts.getMajorTick();
 
@@ -319,7 +325,8 @@ public class RulerPanel extends JPanel {
         int l = (int) (nTick * spacing);
         int x = frame.getScreenPosition(l - 1 + 0.5);    // 0 vs 1 based coordinates, then center over base
         //int strEnd = Integer.MIN_VALUE;
-        while (frame.isInverted() ? x > 0 : x < getWidth()) {
+        double genomicLimit = frame.getEnd() + spacing;
+        while (l <= genomicLimit) {
             l = (int) (nTick * spacing);
             x = frame.getScreenPosition(l - 1 + 0.5);
             String chrPosition = formatNumber((double) l / ts.getUnitMultiplier()) +
@@ -328,10 +335,11 @@ public class RulerPanel extends JPanel {
             int strPosition = x - strWidth / 2;
             final int height = getHeight();
 
-            if (nTick % 2 == 0 && strPosition > 0) {
+            boolean collapsed = coordinateMap.isCollapsed(l - 1 + 0.5);
+            if (!collapsed && nTick % 2 == 0 && strPosition > 0) {
                 g.drawString(chrPosition, strPosition, height - 15);
             }
-            if (x > 0) {
+            if (!collapsed && x > 0 && x < getWidth()) {
                 g.drawLine(x, height - 10, x, height - 2);
             }
 

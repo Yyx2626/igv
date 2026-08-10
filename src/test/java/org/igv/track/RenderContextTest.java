@@ -2,6 +2,8 @@ package org.igv.track;
 
 import org.igv.AbstractHeadlessTest;
 import org.igv.ui.panel.ReferenceFrame;
+import org.igv.feature.TrackRegionOverride;
+import org.igv.renderer.DataRange;
 import org.junit.Test;
 
 import java.awt.Color;
@@ -31,5 +33,32 @@ public class RenderContextTest extends AbstractHeadlessTest {
         assertEquals(0, image.getRGB(95, 5));
         context.dispose();
         genomicGraphics.dispose();
+    }
+
+    @Test
+    public void regionalOverrideResolvesColorsAndFlippedRangeWithoutMutatingTrack() {
+        BufferedImage image = new BufferedImage(100, 20, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = image.createGraphics();
+        ReferenceFrame frame = new ReferenceFrame("test");
+        Rectangle bounds = new Rectangle(0, 0, 100, 20);
+        RenderContext context = new RenderContext(null, graphics, frame, bounds, bounds, bounds);
+        DataSourceTrack track = new DataSourceTrack(null, "track", "track", null);
+        track.setColor(Color.BLUE);
+        track.setAltColor(Color.GREEN);
+        track.setDataRange(new DataRange(-2, 0, 8));
+        TrackRegionOverride override = new TrackRegionOverride();
+        override.setPositiveColor(Color.RED);
+        override.setNegativeColor(Color.YELLOW);
+        override.setYAxisMode(TrackRegionOverride.YAxisMode.FLIP);
+        context.setRegionOverride(override);
+
+        assertEquals(Color.RED, context.getPositiveColor(track));
+        assertEquals(Color.YELLOW, context.getNegativeColor(track));
+        assertEquals(8f, context.getDataRange(track).getMinimum(), 0f);
+        assertEquals(-2f, context.getDataRange(track).getMaximum(), 0f);
+        assertEquals(-2f, track.getDataRange().getMinimum(), 0f);
+        assertEquals(8f, track.getDataRange().getMaximum(), 0f);
+        context.dispose();
+        graphics.dispose();
     }
 }

@@ -129,8 +129,12 @@ public class JSONSessionWriter {
                 featureJson.put("chr", region.getChr());
                 featureJson.put("start", region.getStart());
                 featureJson.put("end", region.getEnd());
+                featureJson.put("id", region.getId());
                 if (region.getDescription() != null) {
                     featureJson.put("description", region.getDescription());
+                }
+                if (region.hasActiveDisplayRule()) {
+                    featureJson.put("displayRule", region.getDisplayRule().toJson());
                 }
                 featuresArray.put(featureJson);
             }

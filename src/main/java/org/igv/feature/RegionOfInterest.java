@@ -5,6 +5,7 @@ package org.igv.feature;
 import org.igv.ui.WaitCursorManager;
 
 import java.awt.*;
+import java.util.UUID;
 
 /**
  * @author eflakes
@@ -15,8 +16,12 @@ public class RegionOfInterest{
     private String description;
     private int start;    // In Chromosome coordinates
     private int end;      // In Chromosome coordinates
+    private final String id;
+    private RegionDisplayRule displayRule;
     private static Color backgroundColor = Color.RED;
-    private static Color foregroundColor = Color.BLACK;
+    // The ROI strip is only an interaction affordance.  A visible outline competes with
+    // region background/foreground display rules, so the default border is transparent.
+    private static Color foregroundColor = new Color(0, 0, 0, 0);
     boolean selected = false;
 
     private WaitCursorManager.CursorToken token;
@@ -31,10 +36,16 @@ public class RegionOfInterest{
      */
     public RegionOfInterest(String chromosomeName, int start, int end, String description) {
 
+        this(chromosomeName, start, end, description, UUID.randomUUID().toString());
+    }
+
+    public RegionOfInterest(String chromosomeName, int start, int end, String description, String id) {
+
         this.chr = chromosomeName;
         this.description = description;
         this.start = start;
         this.end = end;
+        this.id = id == null || id.isBlank() ? UUID.randomUUID().toString() : id;
     }
 
     public String getTooltip() {
@@ -43,6 +54,27 @@ public class RegionOfInterest{
 
     public String getChr() {
         return chr;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public RegionDisplayRule getDisplayRule() {
+        return displayRule;
+    }
+
+    public RegionDisplayRule getOrCreateDisplayRule() {
+        if (displayRule == null) displayRule = new RegionDisplayRule();
+        return displayRule;
+    }
+
+    public void setDisplayRule(RegionDisplayRule displayRule) {
+        this.displayRule = displayRule != null && displayRule.hasAnyEffect() ? displayRule : null;
+    }
+
+    public boolean hasActiveDisplayRule() {
+        return displayRule != null && displayRule.hasAnyEffect();
     }
 
     public void setDescription(String description) {

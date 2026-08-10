@@ -37,6 +37,7 @@ public class DataPanelPainter {
 
     private boolean shouldPaintExpandedInsertion(InsertionMarker insertion, RenderContext context) {
         if (insertion == null) return false;
+        if (context.getDisplayBinPlan() != null) return false;
 
         Collection<AlignmentTrack> tracks = IGV.getInstance().getAlignmentTracks();
         if (tracks.isEmpty()) return false;
@@ -115,5 +116,4 @@ public class DataPanelPainter {
         }
     }
 }
-
 

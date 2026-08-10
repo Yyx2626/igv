@@ -37,15 +37,15 @@ public class LineplotRenderer extends XYPlotRenderer {
         double origin = context.getOrigin();
         double locScale = context.getScale();
 
-        Color posColor = track.getColor();
-        Color negColor = track.getAltColor();
+        Color posColor = context.getPositiveColor(track);
+        Color negColor = context.getNegativeColor(track);
 
         Graphics2D gPos = context.getGraphic2DForColor(posColor);
         Graphics2D gNeg = context.getGraphic2DForColor(negColor);
 
         // Get the Y axis definition, consisting of minimum, maximum, and base value.  Often
         // the base value is == min value which is == 0.
-        DataRange axisDefinition = track.getDataRange();
+        DataRange axisDefinition = context.getDataRange(track);
         float maxValue = (float) axisDefinition.getMaximum();
         float baseValue = (float) axisDefinition.getBaseline();
         float minValue = (float) axisDefinition.getMinimum();

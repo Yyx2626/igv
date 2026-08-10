@@ -27,6 +27,7 @@ public class RegionOfInterestPanel extends JPanel {
     ReferenceFrame frame;
     RegionOfInterest focusROI;
     boolean switchStartOrEnd;
+    boolean boundaryChanged;
 
     // There can only be 1 selected region, irrespective of the number of panels
     private static RegionOfInterest selectedRegion = null;
@@ -79,7 +80,7 @@ public class RegionOfInterestPanel extends JPanel {
             int start = frame.getScreenPosition(regionStart);
             int end = frame.getScreenPosition(regionEnd);
             int regionX = Math.min(start, end);
-            int regionWidth = Math.max(1, Math.abs(end - start));
+            int regionWidth = Math.max(1, Math.abs(end - start) + 1);
 
             g.setColor(regionOfInterest.getBackgroundColor());
             g.fillRect(regionX, 0, regionWidth, height);
@@ -144,6 +145,22 @@ public class RegionOfInterestPanel extends JPanel {
         });
         popupMenu.add(item);
 
+        item = new JMenuItem("Regional settings...");
+        item.addActionListener(e -> RegionalSettingsDialog.showDialog(parent, roi, null));
+        popupMenu.add(item);
+
+        item = new JMenuItem("Reset regional settings");
+        item.setEnabled(roi.hasActiveDisplayRule());
+        item.addActionListener(e -> {
+            roi.setDisplayRule(null);
+            IGV.getInstance().getSession().notifyRegionsOfInterestChanged();
+            for (ReferenceFrame referenceFrame : FrameManager.getFrames()) {
+                referenceFrame.refreshRegionDisplayCoordinateMap();
+            }
+            IGV.getInstance().repaint();
+        });
+        popupMenu.add(item);
+
         item = new JMenuItem("Copy sequence");
         item.addActionListener(new ActionListener() {
 
@@ -182,7 +199,7 @@ public class RegionOfInterestPanel extends JPanel {
 
         item = new JMenuItem("Delete");
         item.addActionListener(e -> {
-            IGV.getInstance().getSession().getRegionsOfInterest(frame.getChrName()).remove(roi);
+            IGV.getInstance().getSession().removeRegionsOfInterest(java.util.List.of(roi));
             IGV.getInstance().repaint();
         });
         popupMenu.add(item);
@@ -208,6 +225,11 @@ public class RegionOfInterestPanel extends JPanel {
             if ((e.getModifiers() & MouseEvent.CTRL_MASK) != 0) {
                 focusROI = getRegionOfInterest(e.getX());
                 if (focusROI != null) {
+                    if (focusROI.hasActiveDisplayRule()) {
+                        focusROI = null;
+                        setToolTipText("Reset regional settings before changing this region's boundaries.");
+                        return;
+                    }
                     int curPos = (int) frame.getChromosomePosition(e);
                     int startDist = Math.abs(focusROI.getStart() - curPos);
                     int endDist = Math.abs(focusROI.getEnd() - curPos);
@@ -231,6 +253,7 @@ public class RegionOfInterestPanel extends JPanel {
                 } else {
                     focusROI.setEnd((int) frame.getChromosomePosition(e));
                 }
+                boundaryChanged = true;
                 IGV.getInstance().repaint();
             }
         }
@@ -241,6 +264,10 @@ public class RegionOfInterestPanel extends JPanel {
                 selectedRegion = null;
                 IGV.getInstance().repaint();
             }
+            if (boundaryChanged) {
+                IGV.getInstance().getSession().notifyRegionsOfInterestChanged();
+                boundaryChanged = false;
+            }
             focusROI = null;
             dragging = false;
         }
@@ -250,7 +277,10 @@ public class RegionOfInterestPanel extends JPanel {
             RegionOfInterest roi = getRegionOfInterest(e.getX());
             if (roi != null) {
                 setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-                setToolTipText("<html>" + roi.getTooltip() + "<br>To resize use ctrl-click-drag.");
+                String resizeHint = roi.hasActiveDisplayRule()
+                        ? "Reset regional settings before resizing."
+                        : "To resize use ctrl-click-drag.";
+                setToolTipText("<html>" + roi.getTooltip() + "<br>" + resizeHint);
                 if (selectedRegion != roi) {
                     selectedRegion = roi;
                     IGV.getInstance().repaint();
