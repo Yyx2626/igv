@@ -150,10 +150,13 @@ processResources {
         timestamp = new Date().format("MM/dd/yyyy hh:mm aa")
     }
 
-    filesMatching('resources/about.properties') {
+    // Resource paths are relative to src/main/resources, so about.properties is
+    // at the resource root rather than under a nested "resources" directory.
+    filesMatching('about.properties') {
         filter(ReplaceTokens,
                 tokens: [VERSION  : version, BUILD: buildNumber, DEFAULT_MASTER_RESOURCE_URL: dataServerUrl,
-                         TIMESTAMP: timestamp])
+                         TIMESTAMP: timestamp,
+                         DEVELOPMENT: providers.gradleProperty('development').getOrElse('false')])
     }
 }
 

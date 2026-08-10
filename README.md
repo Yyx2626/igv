@@ -10,11 +10,10 @@ Integrative Genomics Viewer - desktop genome visualization tool for Mac, Windows
 ## About this fork
 
 This repository was forked from [`igvteam/igv`](https://github.com/igvteam/igv)
-on August 9, 2026. The customization work started from upstream commit
-[`5f20cadf7`](https://github.com/igvteam/igv/commit/5f20cadf7fa10d405e7a8ecd9255a1ed502d9115)
-(`Restore "new session" and "reload session"`), cloned on August 5, 2026. This
-stable customization snapshot contains 12 local commits through
-[`8e8d19d1d`](https://github.com/Yyx2626/igv/commit/8e8d19d1d).
+on August 9, 2026, after customization work began from a clone of the upstream
+repository on August 5, 2026. The customized source is maintained on this
+repository's `main` branch; Git history records the exact upstream and local
+revisions.
 
 ### Downloads
 
@@ -53,14 +52,21 @@ For the original, unmodified IGV project, visit
 - Fixed JSON session restoration for local merged/average tracks, pair-group
   columns, group tabs, track order, restored data ranges, and stale pair links.
 - Fixed missing-value statistics and pixel alignment in average/error-bar
-  rendering.
+  rendering, and kept paired top/bottom averages adjacent at the original
+  selected-track position.
+- Fixed genome-switch races, added a stoppable genome-loading dialog that stays
+  visible through default RefSeq loading, and kept progressively loaded tracks
+  in file-load order without moving RefSeq.
 - Fixed broken `igvtools` classpath launchers and bundled-JDK selection scripts.
-- Made HTTP connect/read timeouts configurable and reduced their defaults to
-  avoid multi-minute startup stalls when a remote annotation host is unavailable.
+- Made HTTP connect/read timeouts configurable to avoid multi-minute stalls when
+  a remote annotation host is unavailable.
 
 The individual commits contain the implementation rationale and detailed bug
 causes. This branch is a customized IGV build and is not an official
 `igvteam/igv` release.
+
+See [CHANGELOG.md](CHANGELOG.md) for a day-by-day record of customization and
+debugging work.
 
 ### Building
 
