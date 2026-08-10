@@ -3,6 +3,23 @@
 This changelog records customization and debugging work in this fork. It does
 not duplicate routine changes made by the upstream `igvteam/igv` project.
 
+## August 10, 2026
+
+- Removed hosted-genome, OAuth, and track-hub network discovery from main-window
+  construction so the interface appears promptly without Wi-Fi.
+- Made local FASTA loading stay local: local genome registration no longer
+  triggers hosted-genome or UCSC hub queries.
+- Cached downloaded default RefSeq annotations under the user's IGV directory,
+  with bounded timeouts, stoppable downloads, and atomic cache publication.
+- Kept the genome-loading dialog visible through default RefSeq loading and
+  changed Stop into normal cancellation without a false UI `SEVERE` error.
+- Restored saved main-window bounds at no smaller than the preferred startup
+  size while keeping the window within the selected display.
+- Added detailed startup checkpoints, bypassed URL mapping for local services,
+  and limited the optional remote mapping-table lookup to one attempt per run.
+- Excluded compiled distribution packages from Git tracking to prevent release
+  archives and bundled JDKs from inflating repository history.
+
 ## August 9, 2026
 
 - Forked the customized workspace to `Yyx2626/igv`, documented its upstream

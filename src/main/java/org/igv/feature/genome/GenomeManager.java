@@ -37,15 +37,26 @@ import org.igv.ui.genome.GenomeListManager;
 import org.igv.ui.panel.FrameManager;
 import org.igv.ui.util.MessageUtils;
 import org.igv.ui.util.UIUtilities;
+import org.igv.util.HttpUtils;
 import org.igv.util.ResourceLocator;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
+import java.net.HttpURLConnection;
 import java.net.SocketException;
+import java.net.URL;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -347,7 +358,11 @@ public class GenomeManager {
                 }
                 try {
                     if (locator != null) {
-                        List<Track> tracks = IGV.getInstance().load(locator);
+                        ResourceLocator localOrRemoteLocator = cacheDefaultAnnotation(genome, locator);
+                        if (localOrRemoteLocator == null) {
+                            continue;
+                        }
+                        List<Track> tracks = IGV.getInstance().load(localOrRemoteLocator);
                         if (!continueLoading.getAsBoolean()) {
                             return false;
                         }
@@ -384,6 +399,171 @@ public class GenomeManager {
 
         IGV.getInstance().revalidateTrackPanels();
         return continueLoading.getAsBoolean();
+    }
+
+    /**
+     * Cache remote RefSeq tables after the first successful download. These files are
+     * small, unindexed, and otherwise fetched in full on every genome load.
+     */
+    private ResourceLocator cacheDefaultAnnotation(Genome genome, ResourceLocator locator) {
+
+        if (!HttpUtils.isRemoteURL(locator.getPath()) || !"refgene".equalsIgnoreCase(locator.getFormat())) {
+            return locator;
+        }
+
+        File cacheFile;
+        try {
+            cacheFile = getAnnotationCacheFile(genome, locator);
+        } catch (IOException e) {
+            log.warn("Could not create the RefSeq cache path; skipping remote RefSeq for this load", e);
+            return null;
+        }
+
+        if (!cacheFile.isFile() || cacheFile.length() == 0) {
+            if (!downloadAnnotationToCache(locator.getPath(), cacheFile)) {
+                return null;
+            }
+        } else {
+            log.info("Loading cached genome annotation: " + cacheFile.getAbsolutePath());
+        }
+
+        TrackConfig cachedConfig = TrackConfig.fromJSON(locator.getTrackConfig().toJSON().toString());
+        cachedConfig.url = cacheFile.getAbsolutePath();
+        return ResourceLocator.fromTrackConfig(cachedConfig);
+    }
+
+    private File getAnnotationCacheFile(Genome genome, ResourceLocator locator) throws IOException {
+
+        String safeGenomeId = genome.getId().replaceAll("[^a-zA-Z0-9._-]", "_");
+        File cacheDirectory = new File(
+                new File(DirectoryManager.getGenomeCacheDirectory(), "annotations"), safeGenomeId);
+        Files.createDirectories(cacheDirectory.toPath());
+
+        URL url = HttpUtils.createURL(locator.getPath());
+        String filename = new File(url.getPath()).getName();
+        if (filename.isBlank()) {
+            filename = "refGene.txt.gz";
+        }
+        return new File(cacheDirectory, shortSha256(locator.getPath()) + "-" + filename);
+    }
+
+    private static String shortSha256(String value) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(12);
+            for (int i = 0; i < 6; i++) {
+                hex.append(String.format("%02x", digest[i]));
+            }
+            return hex.toString();
+        } catch (NoSuchAlgorithmException e) {
+            // SHA-256 is required by every supported Java runtime.
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
+    }
+
+    /**
+     * Download into a unique temporary file and atomically publish only a complete file.
+     * HTTP.READ_TIMEOUT is also used as a total download deadline so a slow trickle cannot
+     * hold startup indefinitely.
+     */
+    private boolean downloadAnnotationToCache(String urlString, File cacheFile) {
+
+        int timeoutMillis = Math.max(1000,
+                PreferencesManager.getPreferences().getAsInt(Constants.HTTP_READ_TIMEOUT));
+        return downloadAnnotationToCache(urlString, cacheFile, timeoutMillis);
+    }
+
+    static boolean downloadAnnotationToCache(String urlString, File cacheFile, int timeoutMillis) {
+
+        Path temporaryFile;
+        try {
+            temporaryFile = Files.createTempFile(
+                    cacheFile.getParentFile().toPath(), cacheFile.getName() + ".", ".download");
+        } catch (IOException e) {
+            log.warn("Could not create a temporary RefSeq cache file; skipping RefSeq", e);
+            return false;
+        }
+
+        AtomicReference<HttpURLConnection> activeConnection = new AtomicReference<>();
+        FutureTask<Long> downloadTask = new FutureTask<>(() -> {
+            URL url = HttpUtils.createURL(urlString);
+            HttpURLConnection connection = HttpUtils.getInstance().openConnection(url, null);
+            activeConnection.set(connection);
+            if (Thread.currentThread().isInterrupted()) {
+                throw new InterruptedIOException("RefSeq download stopped");
+            }
+
+            long expectedLength = connection.getContentLengthLong();
+            long downloaded = 0;
+            try (InputStream input = new BufferedInputStream(connection.getInputStream());
+                 OutputStream output = new BufferedOutputStream(Files.newOutputStream(temporaryFile))) {
+                byte[] buffer = new byte[64 * 1024];
+                int count;
+                while ((count = input.read(buffer)) >= 0) {
+                    if (Thread.currentThread().isInterrupted()) {
+                        throw new InterruptedIOException("RefSeq download stopped");
+                    }
+                    output.write(buffer, 0, count);
+                    downloaded += count;
+                }
+            } finally {
+                connection.disconnect();
+            }
+
+            if (expectedLength > 0 && downloaded != expectedLength) {
+                throw new EOFException("Incomplete RefSeq download: expected " + expectedLength +
+                        " bytes, received " + downloaded);
+            }
+            return downloaded;
+        });
+
+        Thread downloadThread = new Thread(downloadTask, "RefSeq cache download");
+        downloadThread.setDaemon(true);
+        downloadThread.start();
+
+        boolean completed = false;
+        try {
+            log.info("Downloading default RefSeq annotation for local cache: " + urlString);
+            long downloaded = downloadTask.get(timeoutMillis, TimeUnit.MILLISECONDS);
+            if (downloaded <= 0) {
+                throw new IOException("RefSeq download was empty");
+            }
+            try {
+                Files.move(temporaryFile, cacheFile.toPath(),
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temporaryFile, cacheFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+            log.info("Cached default RefSeq annotation: " + cacheFile.getAbsolutePath());
+            completed = true;
+            return true;
+        } catch (TimeoutException e) {
+            log.warn("RefSeq download exceeded " + timeoutMillis + " ms; continuing without RefSeq");
+            return false;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.info("RefSeq download stopped");
+            return false;
+        } catch (ExecutionException e) {
+            log.warn("Could not download RefSeq; continuing without it", e.getCause());
+            return false;
+        } catch (IOException e) {
+            log.warn("Could not save the RefSeq cache; continuing without it", e);
+            return false;
+        } finally {
+            if (!completed) {
+                downloadTask.cancel(true);
+                HttpURLConnection connection = activeConnection.get();
+                if (connection != null) {
+                    connection.disconnect();
+                }
+                try {
+                    Files.deleteIfExists(temporaryFile);
+                } catch (IOException e) {
+                    log.warn("Could not remove incomplete RefSeq cache file: " + temporaryFile, e);
+                }
+            }
+        }
     }
 
     /**

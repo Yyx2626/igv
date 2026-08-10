@@ -93,13 +93,19 @@ private static List<GenomeListItem> readRecords() {
 }
 
 private static boolean loadGenomeList(String url, String idColumn, List<String> errors) {
+    final long checkpointStart = System.nanoTime();
+    log.info("STARTUP CHECKPOINT: before hosted genome list request " + url);
     try {
         String genomeListContent = HttpUtils.getInstance().getContentsAsString(new URL(url));
         List<String> genomeListLines = Arrays.asList(genomeListContent.split("\\r?\\n"));
         String[] headers = parseHeaders(genomeListLines);
         parseRecords(genomeListLines, headers, idColumn);
+        log.info("STARTUP CHECKPOINT: hosted genome list request completed " + url + " (" +
+                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
         return true;
     } catch (Exception e) {
+        log.warn("STARTUP CHECKPOINT: hosted genome list request failed " + url + " (" +
+                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
         log.error("Error loading genome list from: " + url, e);
         errors.add("Error loading genome list from: " + url + "   (" + e.getMessage() + ")");
         return false;

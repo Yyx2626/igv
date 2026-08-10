@@ -131,7 +131,11 @@ public class UIUtilities {
         } else {
             try {
                 SwingUtilities.invokeAndWait(runnable);
-            } catch (InterruptedException | InvocationTargetException e) {
+            } catch (InterruptedException e) {
+                // Interruption is used by stoppable background operations. Preserve
+                // it for the caller without reporting a normal Stop as a UI failure.
+                Thread.currentThread().interrupt();
+            } catch (InvocationTargetException e) {
                 log.error("Error invoking runnable", e);
             }
         }

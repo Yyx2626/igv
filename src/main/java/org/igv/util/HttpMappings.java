@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.net.URLConnection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -24,6 +25,7 @@ public class HttpMappings {
     }
 
     static Map<String, String> urlMappings = new HashMap<>();
+    private static boolean mappingsLoadAttempted;
 
 
     private HttpMappings() {
@@ -45,9 +47,16 @@ public class HttpMappings {
             return mappedURLCache.get(urlString);
         }
 
-        if (urlMappings.isEmpty()) {
-            loadMappings();
+        // Local services are used by plugins, tests, and user workflows. They cannot
+        // be present in the shared remote mapping table, so do not delay them on a
+        // completely unrelated network request.
+        URL inputURL = new URL(urlString);
+        String inputHost = inputURL.getHost();
+        if ("localhost".equalsIgnoreCase(inputHost) || "127.0.0.1".equals(inputHost) || "::1".equals(inputHost)) {
+            return checkStaticMappings(urlString);
         }
+
+        ensureMappingsLoaded();
 
         String mappedURL;
         if(urlMappings.containsKey(urlString)) {
@@ -61,11 +70,18 @@ public class HttpMappings {
         return mappedURL;
     }
 
-    private static void loadMappings() {
+    private static synchronized void ensureMappingsLoaded() {
+        if (mappingsLoadAttempted) {
+            return;
+        }
+        mappingsLoadAttempted = true;
 
         try {
             URL fileUrl = new URL("https://raw.githubusercontent.com/igvteam/igv-data/refs/heads/main/data/url_mappings.tsv");
-            try (InputStream inputStream = fileUrl.openStream();
+            URLConnection connection = fileUrl.openConnection();
+            connection.setConnectTimeout(PreferencesManager.getPreferences().getAsInt("HTTP.CONNECT_TIMEOUT"));
+            connection.setReadTimeout(PreferencesManager.getPreferences().getAsInt("HTTP.READ_TIMEOUT"));
+            try (InputStream inputStream = connection.getInputStream();
                  BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
@@ -82,7 +98,9 @@ public class HttpMappings {
                 }
             }
         } catch (IOException e) {
-            log.error("Error loading URL mappings", e);
+            // The table is an optional compatibility aid.  Continue with the
+            // original URL and avoid retrying it for every request while offline.
+            log.warn("URL mappings are unavailable; continuing with original URLs: " + e.getMessage());
         }
     }
 

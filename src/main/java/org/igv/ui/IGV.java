@@ -142,6 +142,9 @@ public class IGV implements IGVEventObserver {
      */
     private IGV(Frame frame, Main.IGVArgs igvArgs) {
 
+        final long constructorStart = System.nanoTime();
+        long checkpointStart;
+
         theInstance = this;
 
         final IGVPreferences preferences = PreferencesManager.getPreferences();
@@ -197,8 +200,17 @@ public class IGV implements IGVEventObserver {
         }
         rootPane.setDoubleBuffered(true);
 
+        checkpointStart = System.nanoTime();
+        log.info("STARTUP CHECKPOINT: before IGVContentPane construction");
         contentPane = new IGVContentPane(this);
+        log.info("STARTUP CHECKPOINT: after IGVContentPane construction (" +
+                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
+
+        checkpointStart = System.nanoTime();
+        log.info("STARTUP CHECKPOINT: before IGVMenuBar construction");
         menuBar = IGVMenuBar.createInstance(this);
+        log.info("STARTUP CHECKPOINT: after IGVMenuBar construction (" +
+                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
 
         rootPane.setContentPane(contentPane);
         rootPane.setJMenuBar(menuBar);
@@ -206,15 +218,17 @@ public class IGV implements IGVEventObserver {
         glassPane.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         // consumeEvents(glassPane);
 
+        checkpointStart = System.nanoTime();
         mainFrame.pack();
+        log.info("STARTUP CHECKPOINT: mainFrame.pack() completed (" +
+                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
 
         //Certain components MUST be visible, so we set minimum size
         //{@link MainPanel#addDataPanel}
         mainFrame.setMinimumSize(new Dimension(300, 300));
 
-        // Set the application's previous location and size
-        // get the current main screen bounds
-        Dimension screenBounds = Toolkit.getDefaultToolkit().getScreenSize();
+        // Restore the previous location, but do not let an old or partially
+        // initialized preference make the application start unusably small.
         Rectangle applicationBounds = preferences.getApplicationFrameBounds();
 
         // get info of all screens and store them into the array
@@ -227,32 +241,9 @@ public class IGV implements IGVEventObserver {
             boundsArr[i] = curCon.getBounds();
         }
 
-        //set a flag which indicates if the user preference is empty, or if the (x,y) in the user preference is not contained in any screen
-        //default is empty or not contained
-        boolean isNullOrNotContained = true;
-
-        if (applicationBounds != null) {
-            //Iterate over each screen value to find if there is currently a screen that can contain these values.
-            int userX = applicationBounds.x;
-            int userY = applicationBounds.y;
-            double userMaxX = applicationBounds.getMaxX();
-            double userMaxY = applicationBounds.getMaxY();
-            for (Rectangle curScreen : boundsArr) {
-                if (curScreen.contains(userX, userY)) {
-                    isNullOrNotContained = false;
-                    if (userMaxX >= curScreen.getMaxX() || userMaxY >= curScreen.getMaxY()) {
-                        applicationBounds = new Rectangle(curScreen.x, curScreen.y, Math.min(1150, curScreen.width), Math.min(800, curScreen.height));
-                    }
-                    break;
-                }
-            }
-        }
-        if (isNullOrNotContained) {
-            // user's preference is null or the (x,y) in user's preference is not contained in any screen
-            // set the application to the main screen
-            applicationBounds = new Rectangle(0, 0, Math.min(1150, screenBounds.width), Math.min(800, screenBounds.height));
-        }
+        applicationBounds = normalizeApplicationBounds(applicationBounds, boundsArr);
         mainFrame.setBounds(applicationBounds);
+        log.info("STARTUP CHECKPOINT: initial main frame bounds " + applicationBounds);
 
         subscribeToEvents();
 
@@ -263,6 +254,47 @@ public class IGV implements IGVEventObserver {
             int timerDelay = PreferencesManager.getPreferences().getAsInt(AUTOSAVE_FREQUENCY) * 60000; // Convert timer delay to ms
             sessionAutosaveTimer.scheduleAtFixedRate(new AutosaveTimerTask(this), timerDelay, timerDelay);
         }
+        log.info("STARTUP CHECKPOINT: IGV constructor completed (" +
+                (System.nanoTime() - constructorStart) / 1_000_000 + " ms total)");
+    }
+
+    static Rectangle normalizeApplicationBounds(Rectangle savedBounds, Rectangle[] screenBounds) {
+        Rectangle targetScreen = null;
+        boolean savedOriginIsVisible = false;
+
+        if (savedBounds != null) {
+            for (Rectangle screen : screenBounds) {
+                if (screen.contains(savedBounds.x, savedBounds.y)) {
+                    targetScreen = screen;
+                    savedOriginIsVisible = true;
+                    break;
+                }
+            }
+        }
+
+        if (targetScreen == null) {
+            targetScreen = screenBounds.length > 0
+                    ? screenBounds[0]
+                    : new Rectangle(0, 0, 1150, 800);
+        }
+
+        int requestedWidth = savedOriginIsVisible
+                ? Math.max(savedBounds.width, UIConstants.preferredSize.width)
+                : 1150;
+        int requestedHeight = savedOriginIsVisible
+                ? Math.max(savedBounds.height, UIConstants.preferredSize.height)
+                : 800;
+        int width = Math.min(requestedWidth, targetScreen.width);
+        int height = Math.min(requestedHeight, targetScreen.height);
+
+        int requestedX = savedOriginIsVisible ? savedBounds.x : targetScreen.x;
+        int requestedY = savedOriginIsVisible ? savedBounds.y : targetScreen.y;
+        int x = Math.max(targetScreen.x,
+                Math.min(requestedX, targetScreen.x + targetScreen.width - width));
+        int y = Math.max(targetScreen.y,
+                Math.min(requestedY, targetScreen.y + targetScreen.height - height));
+
+        return new Rectangle(x, y, width, height);
     }
 
     public static List<Track> getSelectedTracks() {
@@ -1529,12 +1561,19 @@ public class IGV implements IGVEventObserver {
         @Override
         public void run() {
 
+            final long startupRunnableStart = System.nanoTime();
+            long checkpointStart;
+            log.info("STARTUP CHECKPOINT: StartupRunnable.run() begin");
             final IGVPreferences preferences = PreferencesManager.getPreferences();
 
             // Start CommandsServer **before** loading the initial genome, as credentials might need to be set for
             // privately hosted genomes.
+            checkpointStart = System.nanoTime();
             startCommandsServer(igvArgs, preferences);
+            log.info("STARTUP CHECKPOINT: command server startup completed (" +
+                    (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
 
+            checkpointStart = System.nanoTime();
             UIUtilities.invokeAndWaitOnEventThread(() -> {
                 mainFrame.setIconImage(getIconImage());
                 if (Globals.IS_MAC) {
@@ -1542,6 +1581,9 @@ public class IGV implements IGVEventObserver {
                 }
                 mainFrame.setVisible(true);
             });
+            log.info("STARTUP CHECKPOINT: main frame set visible (" +
+                    (System.nanoTime() - checkpointStart) / 1_000_000 + " ms; " +
+                    (System.nanoTime() - startupRunnableStart) / 1_000_000 + " ms since StartupRunnable began)");
 
             // Load the initial genome.
             final boolean runningBatch = igvArgs.getBatchFile() != null;
@@ -1573,6 +1615,7 @@ public class IGV implements IGVEventObserver {
                 boolean loadAutosave = autosavePresent && PreferencesManager.getPreferences().getAsBoolean(AUTOLOAD_LAST_AUTOSAVE);
 
                 boolean genomeLoaded = false;
+                boolean genomeLoadingStopped = false;
                 if (igvArgs.getGenomeId() != null) {
                     String genomeId = igvArgs.getGenomeId();
                     try {
@@ -1581,9 +1624,10 @@ public class IGV implements IGVEventObserver {
                         MessageUtils.showErrorMessage("Error loading genome: " + genomeId, e);
                         log.error("Error loading genome: " + genomeId, e);
                     }
+                    genomeLoadingStopped = !genomeLoaded && Thread.interrupted();
                 }
                 // If we're not loading a session file, attempt to load a default genome file
-                if (igvArgs.getSessionFile() == null && !loadAutosave && !genomeLoaded) {
+                if (igvArgs.getSessionFile() == null && !loadAutosave && !genomeLoaded && !genomeLoadingStopped) {
                     String genomeId = preferences.getDefaultGenome();
                     try {
                         genomeLoaded = GenomeManager.getInstance().loadGenomeById(genomeId);
@@ -1592,7 +1636,10 @@ public class IGV implements IGVEventObserver {
                         genomeLoaded = false;
                     }
 
-                    if (!genomeLoaded) {
+                    // Stop interrupts this worker.  Treat that as normal control
+                    // flow and clear the flag before any later Swing handoff.
+                    genomeLoadingStopped = !genomeLoaded && Thread.interrupted();
+                    if (!genomeLoaded && !genomeLoadingStopped) {
                         Genome genome = Genome.NULL_GENOME;
                         GenomeManager.getInstance().setCurrentGenome(genome);
                     }

@@ -154,8 +154,7 @@ processResources {
     // at the resource root rather than under a nested "resources" directory.
     filesMatching('about.properties') {
         filter(ReplaceTokens,
-                tokens: [VERSION  : version, BUILD: buildNumber, DEFAULT_MASTER_RESOURCE_URL: dataServerUrl,
-                         TIMESTAMP: timestamp,
+                tokens: [VERSION: version, BUILD: buildNumber, TIMESTAMP: timestamp,
                          DEVELOPMENT: providers.gradleProperty('development').getOrElse('false')])
     }
 }

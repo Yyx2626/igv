@@ -1,6 +1,7 @@
 /.github/
 /.gradle/
 /build/
+/dist-packages/
 /.idea/
 
 #JENV local config file

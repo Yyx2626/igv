@@ -711,21 +711,20 @@ public class IGVMenuBar extends JMenuBar {
             hubsMenu.addSeparator();
         }
 
-        // Add select item if hubs are available for this genome.  Hubs can be from the UCSC registry or user added (by URL)
-        List<HubDescriptor> hubs = HubRegistry.getAllHubsForGenome(genome.getUCSCId());
-        if (!hubs.isEmpty()) {
-            JMenuItem addHubItem = new JMenuItem("Select Track Hubs ...");
-            addHubItem.addActionListener(e -> {
-                final HubSelectionDialog hubSelectionDialog = new HubSelectionDialog(igv.getMainFrame());
-                hubSelectionDialog.setVisible(true);
-                if (!hubSelectionDialog.isCanceled()) {
-                    List<HubDescriptor> selected = hubSelectionDialog.getSelectedHubs();
-                    HubRegistry.setSelectedHubs(selected);
-                    updateHubsMenu(GenomeManager.getInstance().getCurrentGenome());
-                }
-            });
-            hubsMenu.add(addHubItem);
-        }
+        // Registry discovery can require the network.  Defer it until the user
+        // explicitly opens the selection dialog instead of doing it on every
+        // genome change, including when a local FASTA is loaded offline.
+        JMenuItem addHubItem = new JMenuItem("Select Track Hubs ...");
+        addHubItem.addActionListener(e -> {
+            final HubSelectionDialog hubSelectionDialog = new HubSelectionDialog(igv.getMainFrame());
+            hubSelectionDialog.setVisible(true);
+            if (!hubSelectionDialog.isCanceled()) {
+                List<HubDescriptor> selected = hubSelectionDialog.getSelectedHubs();
+                HubRegistry.setSelectedHubs(selected);
+                updateHubsMenu(GenomeManager.getInstance().getCurrentGenome());
+            }
+        });
+        hubsMenu.add(addHubItem);
 
 
         // Load hub from URL
@@ -1014,19 +1013,17 @@ public class IGVMenuBar extends JMenuBar {
 
     private JMenu createGoogleMenu() {
 
-        final OAuthProvider googleProvider = OAuthUtils.getInstance().getGoogleProvider();
-        if (googleProvider == null) {
-            log.error("Error creating google oauth provider");
-            return null;
-        }
-
-
         googleMenu = new JMenu("Google");
 
         final JMenuItem login = new JMenuItem("Login ... ");
 
         login.addActionListener(e -> {
             try {
+                OAuthProvider googleProvider = OAuthUtils.getInstance().getGoogleProvider();
+                if (googleProvider == null) {
+                    MessageUtils.showMessage("Google access is not configured.");
+                    return;
+                }
                 googleProvider.openAuthorizationPage();
             } catch (Exception ex) {
                 MessageUtils.showErrorMessage("Error fetching oAuth tokens.  See log for details", ex);
@@ -1038,8 +1035,11 @@ public class IGVMenuBar extends JMenuBar {
 
         final JMenuItem logout = new JMenuItem("Logout ");
         logout.addActionListener(e -> {
-            googleProvider.logout();
-            GoogleUtils.setProjectID(null);
+            OAuthProvider googleProvider = OAuthUtils.getInstance().getGoogleProvider();
+            if (googleProvider != null) {
+                googleProvider.logout();
+                GoogleUtils.setProjectID(null);
+            }
         });
         googleMenu.add(logout);
 
@@ -1050,6 +1050,12 @@ public class IGVMenuBar extends JMenuBar {
         googleMenu.addMenuListener(new MenuSelectedListener() {
             @Override
             public void menuSelected(MenuEvent e) {
+                OAuthProvider googleProvider = OAuthUtils.getInstance().getGoogleProvider();
+                if (googleProvider == null) {
+                    login.setEnabled(false);
+                    logout.setEnabled(false);
+                    return;
+                }
                 boolean loggedIn = googleProvider.isLoggedIn();
                 if (loggedIn && googleProvider.getCurrentUserName() != null) {
                     login.setText(googleProvider.getCurrentUserName());

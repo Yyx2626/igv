@@ -254,7 +254,11 @@ public class Main {
             }
         });
 
+        long checkpointStart = System.nanoTime();
+        log.info("STARTUP CHECKPOINT: before initializeLookAndFeel()");
         initializeLookAndFeel();
+        log.info("STARTUP CHECKPOINT: after initializeLookAndFeel() (" +
+                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
 
         // Optional arguments
         if (igvArgs.getPropertyOverrides() != null) {
@@ -270,9 +274,17 @@ public class Main {
         SeekableStreamFactory.setInstance(IGVSeekableStreamFactory.getInstance());
 
         // Start IGV's UI itself (frame) and other components
+        checkpointStart = System.nanoTime();
+        log.info("STARTUP CHECKPOINT: before IGV.createInstance()");
         IGV igv = IGV.createInstance(frame, igvArgs);
+        log.info("STARTUP CHECKPOINT: after IGV.createInstance() (" +
+                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
 
+        checkpointStart = System.nanoTime();
+        log.info("STARTUP CHECKPOINT: before igv.startUp()");
         igv.startUp(igvArgs);
+        log.info("STARTUP CHECKPOINT: after igv.startUp() (" +
+                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
 
         // TODO Should this be done here?  Will this step on other key dispatchers?
         KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(GlobalKeyDispatcher.getInstance());

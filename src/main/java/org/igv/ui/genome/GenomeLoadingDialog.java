@@ -7,12 +7,15 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Modal, cancellable status dialog for loading a genome and its default annotation tracks. */
 public final class GenomeLoadingDialog {
 
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final CountDownLatch shown = new CountDownLatch(1);
     private final IGVDialog dialog;
 
     private GenomeLoadingDialog(Frame owner, String genomeLabel, Runnable cancelAction) {
@@ -43,8 +46,18 @@ public final class GenomeLoadingDialog {
         stop.addActionListener(e -> cancelAndClose.run());
         dialog.addWindowListener(new WindowAdapter() {
             @Override
+            public void windowOpened(WindowEvent e) {
+                shown.countDown();
+            }
+
+            @Override
             public void windowClosing(WindowEvent e) {
                 cancelAndClose.run();
+            }
+
+            @Override
+            public void windowClosed(WindowEvent e) {
+                shown.countDown();
             }
         });
 
@@ -62,6 +75,14 @@ public final class GenomeLoadingDialog {
                 loadingDialog.dialog.setVisible(true);
             }
         });
+        if (!SwingUtilities.isEventDispatchThread()) {
+            try {
+                // Do not begin genome network access until the loading UI has actually opened.
+                loadingDialog.shown.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
         return loadingDialog;
     }
 

@@ -55,8 +55,12 @@ For the original, unmodified IGV project, visit
   rendering, and kept paired top/bottom averages adjacent at the original
   selected-track position.
 - Fixed genome-switch races, added a stoppable genome-loading dialog that stays
-  visible through default RefSeq loading, and kept progressively loaded tracks
-  in file-load order without moving RefSeq.
+  visible through default RefSeq loading, cached remote RefSeq annotations for
+  later offline use, and kept progressively loaded tracks in file-load order
+  without moving RefSeq.
+- Made main-window construction and local FASTA loading independent of hosted
+  genome, OAuth, and track-hub network discovery; restored startup windows to a
+  usable on-screen size and treated Stop as normal cancellation.
 - Fixed broken `igvtools` classpath launchers and bundled-JDK selection scripts.
 - Made HTTP connect/read timeouts configurable to avoid multi-minute stalls when
   a remote annotation host is unavailable.

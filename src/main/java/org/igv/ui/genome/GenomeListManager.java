@@ -96,20 +96,33 @@ public class GenomeListManager {
 
         genomeItemMap.put(genomeListItem.getId(), genomeListItem);
 
-        GenomeListItem hostedListItem = HostedGenomes.getGenomeListItem(genomeListItem.getId());
-        boolean isHosted = hostedListItem != null && hostedListItem.equals(genomeListItem);
         boolean isCached = DirectoryManager.getGenomeCacheDirectory().
                 equals(new File(genomeListItem.getPath()).getParentFile());
 
-        // If this genome is otherwise unknown (not in the hosted set or local cache) record it in the remote genomes map
-        if (!isHosted && !isCached) {
+        // A local FASTA (or another local genome file) must never trigger hosted-genome
+        // discovery.  It is still recorded when it lives outside the cache root so it
+        // remains selectable on the next launch.
+        boolean isRemote = FileUtils.isRemote(genomeListItem.getPath());
+        if (!isCached && !isRemote) {
+            if (remoteGenomesMap == null) {
+                remoteGenomesMap = new HashMap<>();
+            }
+            remoteGenomesMap.put(genomeListItem.getId(), genomeListItem);
+            exportRemoteGenomesList();
+        } else if (!isCached) {
+            GenomeListItem hostedListItem = HostedGenomes.getGenomeListItem(genomeListItem.getId());
+            boolean isHosted = hostedListItem != null && hostedListItem.equals(genomeListItem);
+            if (isHosted) {
+                IGVEventBus.getInstance().post(new GenomeResetEvent());
+                return;
+            }
+
+            // If this genome is otherwise unknown, record it in the remote genomes map.
             if (remoteGenomesMap == null) {
                 remoteGenomesMap = new HashMap<>();
             }
 
-            if (hostedListItem == null || !hostedListItem.equals(genomeListItem)) {
-
-                remoteGenomesMap.put(genomeListItem.getId(), genomeListItem);
+            if (!isHosted) {
                 remoteGenomesMap.put(genomeListItem.getId(), genomeListItem);
                 exportRemoteGenomesList();
             }
@@ -178,6 +191,10 @@ public class GenomeListManager {
 
         if (downloadedGenomesMap == null) {
 
+            final long scanStart = System.nanoTime();
+            log.info("STARTUP CHECKPOINT: scanning local genome cache " +
+                    DirectoryManager.getGenomeCacheDirectory().getAbsolutePath());
+
             downloadedGenomesMap = new HashMap<>();
             if (!DirectoryManager.getGenomeCacheDirectory().exists()) {
                 return downloadedGenomesMap;
@@ -211,12 +228,9 @@ public class GenomeListManager {
                         String name = config.getName();
                         GenomeListItem item = new GenomeListItem(name, file.getAbsolutePath(), id);
 
-                        if (GenomeUtils.isDeprecated(config)) {
-                            GenomeListItem hostedItem = HostedGenomes.getGenomeListItem(id);
-                            if (hostedItem != null) {
-                                item = hostedItem;
-                            }
-                        }
+                        // Building the startup dropdown must remain local-only.  Resolving an old
+                        // genome definition through HostedGenomes performs network requests and can
+                        // block (or display modal errors) before the main window exists.
                         downloadedGenomesMap.put(id, item);
                     } catch (Exception e) {
                         log.error("Error parsing genome json: " + file.getAbsolutePath(), e);
@@ -260,13 +274,7 @@ public class GenomeListManager {
                             String name = properties.getProperty(GenomeDescriptor.GENOME_ARCHIVE_NAME_KEY);
                             GenomeListItem genomeListItem = new GenomeListItem(name, path, id);
 
-                            GenomeListItem hostedItem = HostedGenomes.getGenomeListItem(id);
-                            String fastaURL = properties.getProperty(GenomeDescriptor.GENOME_ARCHIVE_SEQUENCE_FILE_LOCATION_KEY);
-                            if (hostedItem != null && fastaURL != null && GenomeUtils.isDeprecated(fastaURL)) {
-                                log.warn("Genome file " + file.getName() + " is deprecated. Using hosted genome instead.");
-                                genomeListItem = GenomeUtils.updateGenome(hostedItem);
-                            }
-
+                            // Do not contact HostedGenomes while constructing the startup dropdown.
                             downloadedGenomesMap.put(id, genomeListItem);
                         }
                     } catch (Exception e) {
@@ -274,6 +282,8 @@ public class GenomeListManager {
                     }
                 }
             }
+            log.info("STARTUP CHECKPOINT: local genome cache scan completed (" +
+                    (System.nanoTime() - scanStart) / 1_000_000 + " ms)");
         }
 
         return downloadedGenomesMap;

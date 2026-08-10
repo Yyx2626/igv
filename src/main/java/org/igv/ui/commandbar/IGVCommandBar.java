@@ -64,10 +64,16 @@ public class IGVCommandBar extends javax.swing.JPanel implements IGVEventObserve
 
     public IGVCommandBar() {
 
+        long checkpointStart = System.nanoTime();
         initComponents();
+        log.info("STARTUP CHECKPOINT: IGVCommandBar.initComponents() completed (" +
+                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
 
         // Post creation widget setup.
+        checkpointStart = System.nanoTime();
         refreshGenomeListComboBox();
+        log.info("STARTUP CHECKPOINT: genome list combo refresh completed (" +
+                (System.nanoTime() - checkpointStart) / 1_000_000 + " ms)");
 
         String currentChr = FrameManager.getDefaultFrame().getChrName();
         boolean isWholeGenome = currentChr.equals(Globals.CHR_ALL);
