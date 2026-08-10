@@ -54,6 +54,8 @@ For the original, unmodified IGV project, visit
 
 ### Minor fixes and debugging
 
+- Made About IGV and terminal startup identify the exact customized build with
+  version, commit, `src/main/` SHA-256, build time, and running-JAR SHA-256.
 - Fixed duplicate loading of files dropped from macOS Finder and made divider
   drag-and-drop use the live panel position instead of stale cached state.
 - Fixed negative-only autoscaling, Y-axis and mid-line clipping, viewport and

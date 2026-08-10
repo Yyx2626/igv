@@ -176,6 +176,8 @@ public class Main {
         }
 
         DirectoryManager.initializeLog();
+        System.out.println("IGV build information");
+        System.out.println(Globals.buildInfoText());
         log.info("Startup  " + Globals.applicationString());
         log.info("Java " + System.getProperty(Globals.JAVA_VERSION_STRING)
                 + " (build " + System.getProperty("java.vm.version")
@@ -506,7 +508,7 @@ public class Main {
             String[] nonOptionArgs = parser.getRemainingArgs();
 
             if (parser.getOptionValue(versionOption) != null) {
-                System.out.println(Globals.VERSION);
+                System.out.println(Globals.buildInfoText());
                 System.exit(0);
             }
 

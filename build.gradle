@@ -22,6 +22,66 @@ repositories {
 }
 
 import org.apache.tools.ant.filters.ReplaceTokens
+import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.util.HexFormat
+
+// Build identity must come from the source checkout, not from a developer's
+// manually maintained gradle.properties.  Release builds may still override
+// version/timestamp explicitly; local customized builds derive both here.
+def gitOutput = { List<String> arguments ->
+    try {
+        def process = new ProcessBuilder((["git"] + arguments) as List<String>)
+                .directory(rootDir)
+                .redirectErrorStream(true)
+                .start()
+        def output = process.inputStream.getText('UTF-8').trim()
+        return process.waitFor() == 0 ? output : null
+    } catch (Exception ignored) {
+        return null
+    }
+}
+def gitStatus = gitOutput(["status", "--porcelain"])
+def sourceDirty = gitStatus != null && !gitStatus.isEmpty()
+def sourceCommitBase = gitOutput(["rev-parse", "--short=9", "HEAD"]) ?: "unknown"
+def sourceCommit = sourceCommitBase + (sourceDirty && sourceCommitBase != "unknown" ? "-dirty" : "")
+def upstreamVersion = (gitOutput(["describe", "--tags", "--abbrev=0"]) ?: "custom-unversioned")
+        .replaceFirst("^v", "")
+def customizationVersion = providers.gradleProperty("customizationVersion").getOrElse("0").toString()
+def displayVersion = (version.toString() == "user"
+        ? "${upstreamVersion}-customize.${customizationVersion}-${sourceCommitBase}" + (sourceDirty ? "-dirty" : "")
+        : version.toString()).toString()
+def buildTimestamp = (timestamp.toString() == "" || timestamp.toString() == "not_set")
+        ? new Date().format("yyyy-MM-dd HH:mm:ss z", TimeZone.getTimeZone("UTC"))
+        : timestamp.toString()
+
+// Deterministic fingerprint of the source tree used as build input.  Paths are
+// sorted and length-prefixed, and filesystem timestamps/ownership are ignored.
+def sourceRoot = file("${rootDir}/src/main")
+def sourceDigest = MessageDigest.getInstance("SHA-256")
+def sourceFiles = fileTree(sourceRoot) {
+    exclude "**/.DS_Store"
+}.files.findAll { it.isFile() }.sort { first, second ->
+    sourceRoot.toPath().relativize(first.toPath()).toString() <=>
+            sourceRoot.toPath().relativize(second.toPath()).toString()
+}
+sourceFiles.each { sourceFile ->
+    def relativePath = sourceRoot.toPath().relativize(sourceFile.toPath())
+            .toString().replace(File.separatorChar, '/' as char)
+    byte[] pathBytes = relativePath.getBytes(StandardCharsets.UTF_8)
+    sourceDigest.update(ByteBuffer.allocate(Integer.BYTES).putInt(pathBytes.length).array())
+    sourceDigest.update(pathBytes)
+    sourceDigest.update(ByteBuffer.allocate(Long.BYTES).putLong(sourceFile.length()).array())
+    sourceFile.withInputStream { input ->
+        byte[] buffer = new byte[64 * 1024]
+        int length
+        while ((length = input.read(buffer)) >= 0) {
+            if (length > 0) sourceDigest.update(buffer, 0, length)
+        }
+    }
+}
+def sourceSha256 = HexFormat.of().formatHex(sourceDigest.digest())
 
 application {
     mainClass = 'org.igv.ui.Main'
@@ -145,16 +205,17 @@ dependencies {
 
 
 processResources {
-    // Set the current timestamp for release builds; pass in a blank property to enable (i.e. -Ptimestamp="" at CLI)
-    if (timestamp == "") {
-        timestamp = new Date().format("MM/dd/yyyy hh:mm aa")
-    }
-
     // Resource paths are relative to src/main/resources, so about.properties is
     // at the resource root rather than under a nested "resources" directory.
+    inputs.property("displayVersion", displayVersion)
+    inputs.property("sourceCommit", sourceCommit)
+    inputs.property("sourceSha256", sourceSha256)
+    inputs.property("buildTimestamp", buildTimestamp)
     filesMatching('about.properties') {
         filter(ReplaceTokens,
-                tokens: [VERSION: version, BUILD: buildNumber, TIMESTAMP: timestamp,
+                tokens: [VERSION: displayVersion, COMMIT: sourceCommit,
+                         SOURCE_SHA256: sourceSha256,
+                         BUILD: buildNumber, TIMESTAMP: buildTimestamp,
                          DEVELOPMENT: providers.gradleProperty('development').getOrElse('false')])
     }
 }

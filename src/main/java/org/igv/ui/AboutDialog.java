@@ -8,6 +8,9 @@ package org.igv.ui;
 import org.igv.logging.*;
 import org.igv.Globals;
 
+import java.awt.Toolkit;
+import java.awt.datatransfer.StringSelection;
+
 /**
  * @author jrobinso
  */
@@ -21,6 +24,8 @@ public class AboutDialog extends javax.swing.JDialog {
     public AboutDialog(java.awt.Frame parent, boolean modal) {
         super(parent, "About...", modal);
         initComponents();
+        setSize(Math.max(getWidth(), 760), Math.max(getHeight(), 240));
+        setLocationRelativeTo(parent);
     }
 
 
@@ -36,6 +41,7 @@ public class AboutDialog extends javax.swing.JDialog {
 
         jLabel1 = new javax.swing.JLabel();
         jLabel2 = new javax.swing.JLabel();
+        copyButton = new javax.swing.JButton();
         okButton = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
@@ -45,6 +51,10 @@ public class AboutDialog extends javax.swing.JDialog {
         jLabel1.setText("<html><b>Integrative Genomics Viewer<");
 
         jLabel2.setText(Globals.versionString());
+
+        copyButton.setText("Copy Build Info");
+        copyButton.addActionListener(evt -> Toolkit.getDefaultToolkit().getSystemClipboard()
+                .setContents(new StringSelection(Globals.buildInfoText()), null));
 
         okButton.setText("OK");
         okButton.addActionListener(new java.awt.event.ActionListener() {
@@ -63,8 +73,11 @@ public class AboutDialog extends javax.swing.JDialog {
                                 .add(jLabel1, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 239, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
                                 .add(jLabel2)))
                         .add(layout.createSequentialGroup()
-                        .add(91, 91, 91)
-                        .add(okButton))
+                        .add(28, 28, 28)
+                        .add(copyButton)
+                        .addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED, 30, Short.MAX_VALUE)
+                        .add(okButton)
+                        .add(28, 28, 28))
         );
         layout.setVerticalGroup(
                 layout.createParallelGroup(org.jdesktop.layout.GroupLayout.LEADING)
@@ -73,8 +86,10 @@ public class AboutDialog extends javax.swing.JDialog {
                         .add(jLabel1, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE, 25, org.jdesktop.layout.GroupLayout.PREFERRED_SIZE)
                         .add(18, 18, 18)
                         .add(jLabel2)
-                        .addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED, 43, Short.MAX_VALUE)
-                        .add(okButton)
+                        .addPreferredGap(org.jdesktop.layout.LayoutStyle.RELATED, 24, Short.MAX_VALUE)
+                        .add(layout.createParallelGroup(org.jdesktop.layout.GroupLayout.BASELINE)
+                                .add(copyButton)
+                                .add(okButton))
                         .add(29, 29, 29))
         );
 
@@ -107,6 +122,7 @@ public class AboutDialog extends javax.swing.JDialog {
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel2;
+    private javax.swing.JButton copyButton;
     private javax.swing.JButton okButton;
     // End of variables declaration//GEN-END:variables
 }

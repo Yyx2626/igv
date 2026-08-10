@@ -5,6 +5,10 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
 
 ## August 10, 2026
 
+- Added automatic build identity to About IGV and terminal startup output:
+  upstream/customization version, commit (including dirty state), deterministic
+  `src/main/` tree SHA-256, build time, and SHA-256 of the running `igv.jar`. About
+  IGV also provides a Copy Build Info button for comparing installations.
 - Replaced the separate File-menu PNG/SVG commands with a publication-oriented
   Save Screenshot dialog. It supports PNG or SVG output, independent inclusion
   of the top genomic coordinates and track-name column, and an optional

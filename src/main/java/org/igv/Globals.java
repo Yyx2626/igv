@@ -5,7 +5,13 @@ import org.igv.logging.Logger;
 
 import javax.swing.*;
 import java.awt.*;
+import java.io.InputStream;
+import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.text.DecimalFormat;
+import java.util.HexFormat;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
@@ -65,8 +71,11 @@ public class Globals {
 
     public static List emptyList = new ArrayList();
     public static String VERSION;
+    public static String COMMIT;
+    public static String SOURCE_SHA256;
     public static String BUILD;
     public static String TIMESTAMP;
+    private static volatile String runtimeArtifactSha256;
 
     final public static boolean IS_WINDOWS =
             System.getProperty("os.name").toLowerCase().startsWith("windows");
@@ -102,6 +111,8 @@ public class Globals {
             log.error("*** Error retrieving version and build information! ***", e);
         }
         VERSION = properties.getProperty("version", "???");
+        COMMIT = properties.getProperty("commit", "unknown");
+        SOURCE_SHA256 = properties.getProperty("source_sha256", "unknown");
         BUILD = properties.getProperty("build", "???");
         TIMESTAMP = properties.getProperty("timestamp", "???");
         BEDtoolsPath = System.getProperty("BEDtoolsPath", BEDtoolsPath);
@@ -137,7 +148,52 @@ public class Globals {
     }
 
     public static String versionString() {
-        return "<html>Version " + VERSION + " " + TIMESTAMP;
+        return "<html>Version: " + VERSION
+                + "<br>Commit: " + COMMIT
+                + "<br>Build time: " + TIMESTAMP
+                + "<br>Source tree SHA-256: " + SOURCE_SHA256
+                + "<br>Runtime JAR SHA-256: " + getRuntimeArtifactSha256()
+                + "</html>";
+    }
+
+    public static String buildInfoText() {
+        return "Version: " + VERSION
+                + "\nCommit: " + COMMIT
+                + "\nBuild time: " + TIMESTAMP
+                + "\nSource tree SHA-256: " + SOURCE_SHA256
+                + "\nRuntime JAR SHA-256: " + getRuntimeArtifactSha256();
+    }
+
+    /** SHA-256 of the JAR actually supplying this class, computed lazily for About IGV. */
+    public static String getRuntimeArtifactSha256() {
+        String cached = runtimeArtifactSha256;
+        if (cached != null) return cached;
+        synchronized (Globals.class) {
+            if (runtimeArtifactSha256 != null) return runtimeArtifactSha256;
+            try {
+                URI location = Globals.class.getProtectionDomain().getCodeSource().getLocation().toURI();
+                Path artifact = Path.of(location);
+                runtimeArtifactSha256 = Files.isRegularFile(artifact)
+                        ? sha256(artifact)
+                        : "not packaged (running from classes)";
+            } catch (Exception e) {
+                log.warn("Unable to compute runtime artifact SHA-256", e);
+                runtimeArtifactSha256 = "unavailable";
+            }
+            return runtimeArtifactSha256;
+        }
+    }
+
+    static String sha256(Path path) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (InputStream input = Files.newInputStream(path)) {
+            byte[] buffer = new byte[64 * 1024];
+            int length;
+            while ((length = input.read(buffer)) >= 0) {
+                if (length > 0) digest.update(buffer, 0, length);
+            }
+        }
+        return HexFormat.of().formatHex(digest.digest());
     }
 
     public static boolean isBatch() {
