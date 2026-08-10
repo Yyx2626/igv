@@ -2,12 +2,15 @@ package org.igv.ui.panel;
 
 
 import org.igv.Globals;
+import org.igv.prefs.Constants;
+import org.igv.prefs.PreferencesManager;
 import org.igv.track.Track;
 import org.igv.track.TrackClickEvent;
 import org.igv.track.TrackMenuUtils;
 import org.igv.ui.IGV;
 
 import javax.swing.*;
+import java.awt.Color;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -37,6 +40,14 @@ abstract public class TrackPanelComponent extends JPanel {
 
     public Track getTrack() {
         return getTrackPanel().getTrack();
+    }
+
+    protected Color getEffectiveTrackBackground() {
+        Color override = getTrack() == null ? null : getTrack().getBackgroundColorOverride();
+        return override != null ? override
+                : darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.TRACK_BACKGROUND_COLOR)
+                ? UIManager.getColor("Panel.background")
+                : PreferencesManager.getPreferences().getAsColor(Constants.TRACK_BACKGROUND_COLOR);
     }
 
     public String getTrackSetID() {

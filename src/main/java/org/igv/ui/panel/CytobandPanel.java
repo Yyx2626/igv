@@ -87,7 +87,13 @@ public class CytobandPanel extends JPanel {
             return;
         }
 
-        cytobandRenderer.drawIdeogram(currentCytobands, g, cytoRect, frame);
+        Graphics2D ideogramGraphics = (Graphics2D) g.create();
+        if (frame.isInverted()) {
+            ideogramGraphics.translate(dataPanelWidth, 0);
+            ideogramGraphics.scale(-1, 1);
+        }
+        cytobandRenderer.drawIdeogram(currentCytobands, ideogramGraphics, cytoRect, frame);
+        ideogramGraphics.dispose();
 
         int chromosomeLength = getReferenceFrame().getMaxCoordinate();
         cytobandScale = ((double) chromosomeLength) / dataPanelWidth;
@@ -97,8 +103,12 @@ public class CytobandPanel extends JPanel {
             double origin = frame.getOrigin();
             double end = frame.getEnd();
 
-            int pixelStart = (int) (origin / cytobandScale);
-            int pixelEnd = (int) (end / cytobandScale);
+            int pixelStart = frame.isInverted()
+                    ? dataPanelWidth - (int) (end / cytobandScale)
+                    : (int) (origin / cytobandScale);
+            int pixelEnd = frame.isInverted()
+                    ? dataPanelWidth - (int) (origin / cytobandScale)
+                    : (int) (end / cytobandScale);
             int pixelSpan = Math.max(0, pixelEnd - pixelStart);
 
             // Draw Cytoband current region viewer
@@ -136,7 +146,7 @@ public class CytobandPanel extends JPanel {
                 WaitCursorManager.CursorToken token = WaitCursorManager.showWaitCursor();
                 try {
 
-                    double newLocation = cytobandScale * mouseX;
+                    double newLocation = cytobandScale * (referenceFrame.isInverted() ? getWidth() - mouseX : mouseX);
                     if (clickCount > 1) {
                         final int newZoom = referenceFrame.getZoom() + 1;
                         referenceFrame.doSetZoomCenter(newZoom, newLocation);
@@ -189,7 +199,8 @@ public class CytobandPanel extends JPanel {
                 if ((delta != 0) && (cytobandScale > 0)) {
                     // Constrain to bounds of chromosome
                     double chrLength = CytobandPanel.this.frame.getChromosomeLength();
-                    double deltaBP = Math.min(Math.max(-viewOrigin, delta * cytobandScale), chrLength - viewEnd);
+                    double direction = referenceFrame.isInverted() ? -1 : 1;
+                    double deltaBP = Math.min(Math.max(-viewOrigin, direction * delta * cytobandScale), chrLength - viewEnd);
                     viewOrigin += deltaBP;
                     viewEnd += deltaBP;
                     // TODO Constrain to chromosome bounds?

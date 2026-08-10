@@ -159,6 +159,20 @@ public class TrackMenuUtils {
                             multiMenu.add(item);
                         }
                     }
+
+                    // A checked track uses this multi-selection branch even when it is the
+                    // only selected track. Preserve the MergedTracks-specific transparency
+                    // control that would otherwise only exist in the single-track branch.
+                    List<MergedTracks> mergedTracksInSelection = dataTracksInSelection.stream()
+                            .filter(t -> t instanceof MergedTracks)
+                            .map(t -> (MergedTracks) t)
+                            .collect(Collectors.toList());
+                    if (mergedTracksInSelection.size() == 1) {
+                        multiMenu.addSeparator();
+                        MergedTracks merged = mergedTracksInSelection.get(0);
+                        multiMenu.add(merged.getAdjustTransparencyItem());
+                        multiMenu.add(merged.getSeparateTracksItem());
+                    }
                 }
 
                 List<Track> annotationTracksInSelection = selectedTracks.stream()
@@ -190,7 +204,7 @@ public class TrackMenuUtils {
         menu.addSeparator();
 
         // Items most tracks share
-        if (track.getType() != TrackType.sequence && track.getType() != TrackType.merged) {
+        if (track.getType() != TrackType.sequence) {
             for (Component item : getSharedMenuItems(Collections.singleton(track))) {
                 menu.add(item);
             }
@@ -201,7 +215,10 @@ public class TrackMenuUtils {
 
         // Pairing items always sit right after the color items - see the matching
         // comment in the multi-track menu above.
-        addPairingSection(menu, track, Collections.singleton(track), true);
+        // The track-specific section below supplies the trailing separator.  Let the
+        // pairing helper add only its leading separator, matching the selected path and
+        // avoiding a double divider for paired unchecked tracks.
+        addPairingSection(menu, track, Collections.singleton(track), false);
 
         // Add track specific items
         menu.add(new JPopupMenu.Separator());
@@ -212,19 +229,23 @@ public class TrackMenuUtils {
             }
         }
 
-        // Add saveImage items
-        menu.addSeparator();
-        JMenuItem savePng = new JMenuItem("Save PNG image...");
-        savePng.addActionListener(e1 -> saveImage(track, "png"));
-        menu.add(savePng);
-        JMenuItem saveSvg = new JMenuItem("Save SVG image...");
-        saveSvg.addActionListener(e1 -> saveImage(track, "svg"));
-        menu.add(saveSvg);
+        // An unchecked overlay should expose the same commands as the checked singleton
+        // selection.  The legacy per-track image/export footer exists only on this old
+        // single-track path, so retaining it for MergedTracks would leave the two popup
+        // variants different even after their numeric controls were unified.
+        if (!(track instanceof MergedTracks)) {
+            menu.addSeparator();
+            JMenuItem savePng = new JMenuItem("Save PNG image...");
+            savePng.addActionListener(e1 -> saveImage(track, "png"));
+            menu.add(savePng);
+            JMenuItem saveSvg = new JMenuItem("Save SVG image...");
+            saveSvg.addActionListener(e1 -> saveImage(track, "svg"));
+            menu.add(saveSvg);
 
-        // Add export features
-        ReferenceFrame frame = FrameManager.getDefaultFrame();
-        JMenuItem exportFeats = TrackMenuUtils.getExportFeatures(track, frame);
-        if (exportFeats != null) menu.add(exportFeats);
+            ReferenceFrame frame = FrameManager.getDefaultFrame();
+            JMenuItem exportFeats = TrackMenuUtils.getExportFeatures(track, frame);
+            if (exportFeats != null) menu.add(exportFeats);
+        }
 
         // Remove
         menu.addSeparator();
@@ -569,8 +590,17 @@ public class TrackMenuUtils {
             log.trace("enter getDataPopupMenu");
         }
 
-        items.addAll(getDataRendererMenuItems(Arrays.asList("Heatmap", "Bar Chart", "Points", "Line Plot", "DynSeq"), tracks));
-        items.add(new JPopupMenu.Separator());
+        // A MergedTracks container delegates painting to its member tracks, so changing
+        // the container renderer has no visible effect.  Keep renderer controls for a
+        // mixed selection, but target only its non-overlay tracks.  Hide the section only
+        // when the selection consists entirely of overlays.
+        List<Track> rendererTargets = tracks.stream()
+                .filter(t -> !(t instanceof MergedTracks))
+                .collect(Collectors.toList());
+        if (!rendererTargets.isEmpty()) {
+            items.addAll(getDataRendererMenuItems(Arrays.asList("Heatmap", "Bar Chart", "Points", "Line Plot", "DynSeq"), rendererTargets));
+            items.add(new JPopupMenu.Separator());
+        }
 
         // Get intersection of all valid window functions for selected tracks
         Set<WindowFunction> avaibleWindowFunctions = new LinkedHashSet<>();
@@ -609,6 +639,10 @@ public class TrackMenuUtils {
 
 
         items.add(getDataRangeItem(tracks));
+
+        JMenuItem flipVertical = new JMenuItem("Flip Y-Axis");
+        flipVertical.addActionListener(evt -> TrackPairing.flipVertically(tracks));
+        items.add(flipVertical);
 
         items.add(getHeatmapScaleItem(tracks));
 
@@ -1745,4 +1779,3 @@ public class TrackMenuUtils {
     }
 
 }
-

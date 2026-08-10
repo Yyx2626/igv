@@ -67,7 +67,11 @@ public class AttributePanel extends TrackPanelComponent implements Paintable {
 
     @Override
     public void paintOffscreen(Graphics2D g, Rectangle rect, boolean batch) {
-        paintImpl(g, rect);
+        Graphics2D snapshotGraphics = (Graphics2D) g.create();
+        snapshotGraphics.setColor(getEffectiveTrackBackground());
+        snapshotGraphics.fillRect(rect.x, rect.y, rect.width, rect.height);
+        paintImpl(snapshotGraphics, rect);
+        snapshotGraphics.dispose();
     }
 
     public void paintImpl(Graphics2D g, Rectangle rect) {

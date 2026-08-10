@@ -154,7 +154,7 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
         if (visible) {
             graphics.setFont(font);
             int textBaseline = 12;
-            graphics.drawString(NAME, 5, textBaseline);
+            GraphicUtils.drawStringUpright(graphics, NAME, 5, textBaseline);
 
             int rx = visibleRect.width - 20;
             arrowRect = new Rectangle(rx, 2, 15, 10);
@@ -175,7 +175,12 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
     }
 
     private void drawArrow(Graphics2D graphics) {
-        GraphicUtils.drawHorizontalArrow(graphics, arrowRect, strand == Strand.POSITIVE);
+        boolean inverted = FrameManager.getDefaultFrame().isInverted();
+        GraphicUtils.drawHorizontalArrow(graphics, arrowRect, isArrowPointingRight(strand, inverted));
+    }
+
+    static boolean isArrowPointingRight(Strand strand, boolean inverted) {
+        return (strand == Strand.POSITIVE) != inverted;
     }
 
 

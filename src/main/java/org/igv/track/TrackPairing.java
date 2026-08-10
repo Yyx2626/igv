@@ -1,8 +1,10 @@
 package org.igv.track;
 
 import org.igv.prefs.PreferencesManager;
+import org.igv.renderer.DataRange;
 import org.igv.ui.IGV;
 import org.igv.ui.panel.TrackPanel;
+import org.igv.ui.panel.TrackPanelScrollPane;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -164,6 +166,80 @@ public class TrackPairing {
             }
         }
         return new Partition(top, bottom);
+    }
+
+    /** Reverse selected numeric axes; if a pair is touched, flip and exchange the complete pair. */
+    public static void flipVertically(Collection<Track> selection) {
+        List<Track> allTracks = IGV.getInstance().getAllTracks();
+        java.util.LinkedHashSet<Track> targets = new java.util.LinkedHashSet<>();
+        java.util.LinkedHashSet<String> pairIds = new java.util.LinkedHashSet<>();
+        for (Track track : selection) {
+            if (track instanceof DataTrack) {
+                targets.add(track);
+                if (isPaired(track)) {
+                    pairIds.add(track.getPairId());
+                    Track partner = findPartner(track, allTracks);
+                    if (partner instanceof DataTrack) {
+                        targets.add(partner);
+                    }
+                }
+            }
+        }
+
+        flipDataRanges(targets);
+
+        List<TrackPanelScrollPane> panes = IGV.getInstance().getMainPanel().getTrackPanels().stream()
+                .map(TrackPanel::getScrollPane).collect(Collectors.toList());
+        for (String pairId : pairIds) {
+            Track top = null;
+            Track bottom = null;
+            for (Track track : allTracks) {
+                if (pairId.equals(track.getPairId())) {
+                    if (track.getPairRole() == PairRole.TOP) top = track;
+                    if (track.getPairRole() == PairRole.BOTTOM) bottom = track;
+                }
+            }
+            if (top == null || bottom == null) continue;
+            int topIndex = panes.indexOf(top.getViewport());
+            int bottomIndex = panes.indexOf(bottom.getViewport());
+            if (topIndex >= 0 && bottomIndex >= 0) {
+                java.util.Collections.swap(panes, topIndex, bottomIndex);
+            }
+            swapPersistentOrder(top, bottom);
+            top.setPairRole(PairRole.BOTTOM);
+            bottom.setPairRole(PairRole.TOP);
+        }
+        if (!pairIds.isEmpty()) {
+            IGV.getInstance().getMainPanel().reorderPanels(panes);
+            IGV.getInstance().getMainPanel().revalidateTrackPanels();
+        }
+        // Flipping an explicit range never requires loading data or recalculating
+        // autoscale.  IGV.repaint(Collection) performs both against every visible track,
+        // which made this constant-time operation occasionally pause on large sessions.
+        // Repaint only the affected Swing viewports; paired tracks already had their
+        // panel layout revalidated above after exchanging top/bottom positions.
+        for (Track target : targets) {
+            target.repaint();
+        }
+    }
+
+    static void flipDataRanges(Collection<Track> targets) {
+        for (Track track : targets) {
+            DataRange range = track.getDataRange();
+            if (range != null) {
+                track.setAutoScale(false);
+                // Group autoscaling takes precedence over getAutoScale() and would replace
+                // the flipped range during the next repaint unless explicitly removed.
+                track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
+                track.setDataRange(range.flipped());
+            }
+        }
+    }
+
+    static void swapPersistentOrder(Track first, Track second) {
+        long firstOrder = first.getOrder();
+        first.setOrder(second.getOrder());
+        second.setOrder(firstOrder);
     }
 
     public static class Partition {

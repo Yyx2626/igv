@@ -191,7 +191,7 @@ public class EWigTrack extends AbstractTrack {
                 g.setFont(smallFont);
                 String scale = "Scale: " + (int) range.getMinimum() + " - " +
                         (int) range.getMaximum();
-                g.drawString(scale, rect.x + 10, rect.y + 10);
+                org.igv.renderer.GraphicUtils.drawStringUpright(g, scale, rect.x + 10, rect.y + 10);
 
             } finally {
                 g.setFont(font);

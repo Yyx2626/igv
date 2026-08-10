@@ -78,10 +78,11 @@ public class RegionOfInterestPanel extends JPanel {
 
             int start = frame.getScreenPosition(regionStart);
             int end = frame.getScreenPosition(regionEnd);
-            int regionWidth = Math.max(1, end - start);
+            int regionX = Math.min(start, end);
+            int regionWidth = Math.max(1, Math.abs(end - start));
 
             g.setColor(regionOfInterest.getBackgroundColor());
-            g.fillRect(start, 0, regionWidth, height);
+            g.fillRect(regionX, 0, regionWidth, height);
 
         }
     }

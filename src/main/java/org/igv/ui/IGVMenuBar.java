@@ -262,29 +262,13 @@ public class IGVMenuBar extends JMenuBar {
         // ***** Snapshots
         fileMenu.addSeparator();
 
-        // Snapshot Application
-        menuAction =
-                new MenuAction("Save PNG Image ...", null, KeyEvent.VK_A) {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        igv.saveImage(igv.getMainPanel(), "png");
-
-                    }
-                };
-
-        menuAction.setToolTipText(SAVE_PNG_IMAGE_TOOLTIP);
-        fileMenu.add(MenuAndToolbarUtils.createMenuItem(menuAction));
-
-        menuAction =
-                new MenuAction("Save SVG Image ...", null) {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        igv.saveImage(igv.getMainPanel(), "svg");
-
-                    }
-                };
-
-        menuAction.setToolTipText(SAVE_SVG_IMAGE_TOOLTIP);
+        menuAction = new MenuAction("Save Screenshot ...", null, KeyEvent.VK_A) {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                igv.saveScreenshot();
+            }
+        };
+        menuAction.setToolTipText("Export a publication screenshot and optional binned track data");
         fileMenu.add(MenuAndToolbarUtils.createMenuItem(menuAction));
 
         // TODO -- change "Exit" to "Close" for BioClipse

@@ -5,6 +5,35 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
 
 ## August 10, 2026
 
+- Replaced the separate File-menu PNG/SVG commands with a publication-oriented
+  Save Screenshot dialog. It supports PNG or SVG output, independent inclusion
+  of the top genomic coordinates and track-name column, and an optional
+  1-based inclusive coordinate suffix in output filenames.
+- Added optional TSV export alongside screenshots. Numeric data are summarized
+  into equal genomic bins; absent values are written as `NA`; merged tracks
+  retain columns for their members; average tracks export N, average, SD, and
+  SEM; and base-resolution views include a strand-labelled reference-sequence
+  column.
+- Added a General preference for numeric display and TSV bin count, with a
+  default of 1500 equal genomic bins, and applied the same binning model to
+  visible numeric tracks.
+- Added an Invert genomic coordinates checkbox that reverses the displayed
+  genomic axis, sequence direction indicator, feature geometry, and transcript
+  arrows while keeping text and Y-axis labels upright. Inversion is also
+  reflected in screenshot filenames and TSV row order and is saved in JSON
+  sessions.
+- Added Flip Y-Axis for numeric tracks. Paired tracks exchange top/bottom
+  positions and roles as well as reversing their ranges; the operation disables
+  conflicting autoscaling, persists through sessions, and repaints only the
+  affected viewports to avoid occasional full-session pauses.
+- Restored the overlay opacity command under the clearer Adjust Overlay
+  Transparency label, saved merged-track opacity in XML/JSON sessions, placed
+  Separate Tracks directly below it, and unified checked and unchecked overlay
+  context menus. Renderer choices are hidden for overlay-only selections and
+  apply only to ordinary numeric tracks in mixed selections.
+- Made screenshot rendering preserve the configured track backgrounds, borders,
+  coordinate area, and track-name area instead of relying on mismatched export
+  defaults.
 - Removed hosted-genome, OAuth, and track-hub network discovery from main-window
   construction so the interface appears promptly without Wi-Fi.
 - Made local FASTA loading stay local: local genome registration no longer

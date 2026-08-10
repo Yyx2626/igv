@@ -155,6 +155,14 @@ public class DataRange {
         return dr;
     }
 
+    /** Independent copy with the vertical axis direction reversed. */
+    public DataRange flipped() {
+        DataRange dr = new DataRange(maximum, baseline, minimum, drawBaseline, isLog());
+        dr.flipAxis = !this.flipAxis;
+        dr.midlineColor = this.midlineColor;
+        return dr;
+    }
+
     public Type getType() {
         return type;
     }

@@ -1,6 +1,7 @@
 package org.igv.feature.genome;
 
 import com.sun.net.httpserver.HttpServer;
+import org.igv.AbstractHeadlessTest;
 import org.igv.feature.genome.load.TrackConfig;
 import org.igv.util.ResourceLocator;
 import org.junit.Rule;
@@ -19,7 +20,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
-public class GenomeAnnotationCacheTest {
+public class GenomeAnnotationCacheTest extends AbstractHeadlessTest {
 
     @Rule
     public TemporaryFolder temporaryFolder = new TemporaryFolder();

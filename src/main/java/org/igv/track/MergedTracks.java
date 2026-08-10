@@ -7,7 +7,6 @@ import org.igv.session.SessionElement;
 import org.igv.ui.IGV;
 import org.igv.ui.action.OverlayTracksMenuAction;
 import org.igv.ui.color.ColorUtilities;
-import org.igv.ui.panel.IGVPopupMenu;
 import org.igv.ui.panel.ReferenceFrame;
 import org.igv.util.ResourceLocator;
 import org.json.JSONArray;
@@ -19,10 +18,7 @@ import javax.swing.*;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 
@@ -287,44 +283,22 @@ public class MergedTracks extends DataTrack implements ScalableTrack {
 
     @Override
     public List<Component> getPopupMenuItems(TrackClickEvent te) {
-
-        List<Component> items = new ArrayList<>();
-
-        final List<Track> selfAsList = Arrays.asList((Track) this);
-        items.add(TrackMenuUtils.getTrackRenameItem(selfAsList));
-
-        //Give users the ability to set the color of each track individually
-        JMenu setPosColorMenu = new JMenu("Change Track Color (Positive Values)");
-        JMenu setNegColorMenu = new JMenu("Change Track Color (Negative Values)");
-        for (DataTrack track : memberTracks) {
-
-            Icon posColorIcon = new ColorIcon(track.getColor());
-            JMenuItem posItem = new JMenuItem(track.getName(), posColorIcon);
-            posItem.addActionListener(new ChangeTrackColorActionListener(track, ChangeTrackMethod.POSITIVE));
-            setPosColorMenu.add(posItem);
-
-            Icon negColorIcon = new ColorIcon(track.getAltColor());
-            JMenuItem negItem = new JMenuItem(track.getName(), negColorIcon);
-            negItem.addActionListener(new ChangeTrackColorActionListener(track, ChangeTrackMethod.NEGATIVE));
-            setNegColorMenu.add(negItem);
-        }
-        items.add(setPosColorMenu);
-        items.add(setNegColorMenu);
-
-        items.add(TrackMenuUtils.getChangeTrackHeightItem(selfAsList));
-
+        // Reuse the same numeric-track menu used by the checked-selection path.  Keeping
+        // a second, overlay-specific copy here was why checked and unchecked popups had
+        // diverged.  getDataMenuItems also knows that renderer choices are meaningless
+        // for an overlay container and omits "Type of Graph".
+        List<Component> items = new ArrayList<>(TrackMenuUtils.getDataMenuItems(List.of(this)));
         items.add(new JPopupMenu.Separator());
-        JMenuItem alphaItem = new JMenuItem("Adjust Transparency");
-        alphaItem.addActionListener(e -> {
-            JDialog alphaDialog = getAlphaDialog();
-            alphaDialog.setVisible(true);
-        });
-        items.add(alphaItem);
+        items.add(getAdjustTransparencyItem());
+        items.add(getSeparateTracksItem());
 
-        items.add(new JPopupMenu.Separator());
-        JMenuItem unmergeItem = new JMenuItem("Separate Tracks");
+        return items;
+    }
 
-        unmergeItem.addActionListener(e -> {
+    /** Kept separate so both selected and unselected popup paths expose this action. */
+    public JMenuItem getSeparateTracksItem() {
+        JMenuItem separateItem = new JMenuItem("Separate Tracks");
+        separateItem.addActionListener(e -> {
             long order = getOrder();
             setTrackAlphas(1.0);
             // Set the order of member tracks to match the merged track's order
@@ -335,9 +309,7 @@ public class MergedTracks extends DataTrack implements ScalableTrack {
             IGV.getInstance().addTracks(new ArrayList<>(getMemberTracks()));
             IGV.getInstance().repaint();
         });
-        items.add(unmergeItem);
-
-        return items;
+        return separateItem;
     }
 
     @Override
@@ -370,6 +342,7 @@ public class MergedTracks extends DataTrack implements ScalableTrack {
         super.unmarshalXML(element, version);
         if (element.hasAttribute("alpha")) {
             this.alpha = Double.valueOf(element.getAttribute("alpha"));
+            setTrackAlphas(this.alpha);
         }
         // Un-marshalling handled in IGVSessionReader
     }
@@ -393,76 +366,9 @@ public class MergedTracks extends DataTrack implements ScalableTrack {
         super.unmarshalJSON(jsonObject);
         if (jsonObject.has("alpha")) {
             this.alpha = jsonObject.getDouble("alpha");
+            setTrackAlphas(this.alpha);
         }
     }
-
-    private enum ChangeTrackMethod {
-        POSITIVE, NEGATIVE
-    }
-
-    private static class ChangeTrackColorActionListener implements ActionListener {
-
-        private Track mTrack;
-        private ChangeTrackMethod method;
-
-        private ChangeTrackColorActionListener(Track track, ChangeTrackMethod method) {
-            this.mTrack = track;
-            this.method = method;
-        }
-
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            switch (this.method) {
-                case POSITIVE:
-                    TrackMenuUtils.changeTrackColor(Arrays.asList(this.mTrack));
-                    break;
-                case NEGATIVE:
-                    TrackMenuUtils.changeAltTrackColor(Arrays.asList(this.mTrack));
-                    break;
-                default:
-                    throw new IllegalStateException("Method not understood: " + this.method);
-            }
-        }
-    }
-
-    /**
-     * A square, solid color Icon
-     */
-    private static class ColorIcon implements Icon {
-
-        private Color color;
-        private int iconSize;
-
-        ColorIcon(Color color) {
-            this(color, 16);
-        }
-
-        ColorIcon(Color color, int iconSize) {
-            this.color = color;
-            this.iconSize = iconSize;
-        }
-
-        @Override
-        public void paintIcon(Component c, Graphics g, int x, int y) {
-            Graphics cg = g.create();
-            cg.setColor(this.color);
-            if (this.iconSize > c.getHeight()) {
-                this.iconSize = c.getHeight();
-            }
-            cg.fillRect(x, y, this.iconSize, this.iconSize);
-        }
-
-        @Override
-        public int getIconWidth() {
-            return this.iconSize;
-        }
-
-        @Override
-        public int getIconHeight() {
-            return this.iconSize;
-        }
-    }
-
 
     public JDialog getAlphaDialog() {
 
@@ -489,6 +395,16 @@ public class MergedTracks extends DataTrack implements ScalableTrack {
         optionPane.setOptionType(JOptionPane.OK_CANCEL_OPTION);
         JDialog dialog = optionPane.createDialog(IGV.getInstance().getMainFrame(), "Transparency");
         return dialog;
+    }
+
+    /** Kept separate so the selected-track popup path can expose this track-specific action too. */
+    public JMenuItem getAdjustTransparencyItem() {
+        JMenuItem alphaItem = new JMenuItem("Adjust Overlay Transparency...");
+        alphaItem.addActionListener(e -> {
+            JDialog alphaDialog = getAlphaDialog();
+            alphaDialog.setVisible(true);
+        });
+        return alphaItem;
     }
 
 

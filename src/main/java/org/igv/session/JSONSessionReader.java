@@ -562,6 +562,11 @@ public class JSONSessionReader implements SessionReader {
             }
             session.setHiddenAttributes(hiddenAttributes);
         }
+
+        // Restore direction last: locus/gene-list setup can replace ReferenceFrame instances,
+        // and the header checkbox must reflect the same session state as those final frames.
+        igv.getMainPanel().setCoordinatesInverted(
+                jsonObject.optBoolean(SessionAttribute.INVERTED_COORDINATES, false));
     }
 
     /**

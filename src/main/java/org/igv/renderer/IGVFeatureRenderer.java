@@ -590,7 +590,7 @@ public class IGVFeatureRenderer extends FeatureRenderer {
         if (nameStart > (lastFeatureEndedAtPixelX + fontSize) && sb.getWidth() < g2D.getClipBounds().getWidth()) {
 
             // g2D.clearRect(xString2, textBaselineY, (int) stringBounds.getWidth(), (int) stringBounds.getHeight());
-            g2D.drawString(name, nameStart, textBaselineY);
+            GraphicUtils.drawStringUpright(g2D, name, nameStart, textBaselineY);
             lastFeatureEndedAtPixelX = nameStart + nameWidth;
         }
 

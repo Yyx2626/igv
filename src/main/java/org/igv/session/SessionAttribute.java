@@ -25,6 +25,7 @@ public class SessionAttribute {
     public static final String ID = "id";
     public static final String ITEM = "item";
     public static final String LOCUS = "locus";
+    public static final String INVERTED_COORDINATES = "invertedCoordinates";
     public static final String NAME = "name";
     public static final String SAMPLE_ID = "sampleID";
     public static final String RESOURCE_TYPE = "resourceType";

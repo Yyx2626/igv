@@ -193,9 +193,12 @@ public abstract class DataTrack extends AbstractTrack implements ScalableTrack, 
             }
             endIdx = Math.max(startIdx + 1, endIdx);
 
-            return startIdx == 0 && endIdx == inViewScores.size() ?
+            List<LocusScore> visibleScores = startIdx == 0 && endIdx == inViewScores.size() ?
                     inViewScores :
                     inViewScores.subList(startIdx, endIdx);
+            int requestedBins = Math.max(1,
+                    PreferencesManager.getPreferences().getAsInt(Constants.SCREENSHOT_DATA_BINS));
+            return NumericTrackBinner.bin(visibleScores, start, end, requestedBins);
         }
     }
 

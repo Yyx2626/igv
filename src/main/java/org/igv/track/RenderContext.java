@@ -16,6 +16,7 @@ public class RenderContext {
 
     private final Graphics2D graphics;
     private Map<Object, Graphics2D> graphicCache;
+    private Map<Object, Graphics2D> screenGraphicCache;
     private ReferenceFrame referenceFrame;
     private JComponent panel;
     public Rectangle trackRectangle;
@@ -40,6 +41,7 @@ public class RenderContext {
         this.graphics = graphics;
         this.panel = panel;
         this.graphicCache = new HashMap();
+        this.screenGraphicCache = new HashMap();
         this.referenceFrame = referenceFrame;
         this.trackRectangle = trackRectangle;
         this.visibleRect = visibleRect;
@@ -52,6 +54,7 @@ public class RenderContext {
     public RenderContext(RenderContext context) {
         this.graphics = (Graphics2D) context.graphics.create();
         this.graphicCache = new HashMap<>();
+        this.screenGraphicCache = new HashMap<>();
         this.referenceFrame = new ReferenceFrame(context.referenceFrame);
         this.panel = context.panel;
         this.trackRectangle = new Rectangle(context.trackRectangle);
@@ -72,6 +75,10 @@ public class RenderContext {
             g.dispose();
         }
         graphicCache.clear();
+        for (Graphics2D g : screenGraphicCache.values()) {
+            g.dispose();
+        }
+        screenGraphicCache.clear();
     }
 
     public Graphics2D getGraphics2D(Object key) {
@@ -89,6 +96,29 @@ public class RenderContext {
     public Graphics2D getGraphic2DForColor(Color color) {
         Graphics2D g = getGraphics2D(color);
         g.setColor(color);
+        return g;
+    }
+
+    /** Graphics for axes and labels that must stay in physical screen coordinates. */
+    public Graphics2D getScreenGraphic2DForColor(Color color) {
+        Graphics2D g = screenGraphicCache.get(color);
+        if (g == null) {
+            g = createScreenGraphics();
+            if (PreferencesManager.getPreferences().getAntiAliasing()) {
+                g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            }
+            screenGraphicCache.put(color, g);
+        }
+        g.setColor(color);
+        return g;
+    }
+
+    public Graphics2D createScreenGraphics() {
+        Graphics2D g = (Graphics2D) graphics.create();
+        if (referenceFrame.isInverted()) {
+            g.scale(-1, 1);
+            g.translate(-trackRectangle.width, 0);
+        }
         return g;
     }
 
@@ -138,6 +168,10 @@ public class RenderContext {
             g.dispose();
         }
         graphicCache.clear();
+        for (Graphics2D g : screenGraphicCache.values()) {
+            g.dispose();
+        }
+        screenGraphicCache.clear();
     }
 
 }

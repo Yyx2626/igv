@@ -126,7 +126,7 @@ public abstract class XYPlotRenderer extends DataRenderer {
         IGVPreferences prefs = PreferencesManager.getPreferences();
 
         Color labelColor = prefs.getAsBoolean(CHART_COLOR_TRACK_NAME) ? track.getColor() : Color.black;
-        Graphics2D labelGraphics = context.getGraphic2DForColor(labelColor);
+        Graphics2D labelGraphics = context.getScreenGraphic2DForColor(labelColor);
 
         labelGraphics.setFont(FontManager.getFont(8));
 

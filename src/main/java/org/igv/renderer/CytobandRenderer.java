@@ -68,7 +68,7 @@ public class CytobandRenderer {
                             g2.setColor(Color.WHITE);
                         }
                         g2.setFont(FontManager.getFont(Font.BOLD, 11));
-                        g2.drawString(locus, 3, 11);
+                        GraphicUtils.drawStringUpright(g2, locus, 3, 11);
                         g2.dispose();
                     }
                 }
@@ -177,7 +177,7 @@ public class CytobandRenderer {
                 int stringWidth = (int) fm.getStringBounds(cytoband.getName(), g).getWidth();
                 int x = (int) (s + (e - s - stringWidth) / 2);
                 if (x > (prevEnd + minSpacing)) {
-                    g.drawString(cytoband.getName(), x, adjustedY);
+                    GraphicUtils.drawStringUpright(g, cytoband.getName(), x, adjustedY);
                     prevEnd = x + stringWidth;
                 }
             }

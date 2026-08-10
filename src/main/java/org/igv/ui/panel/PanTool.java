@@ -112,7 +112,8 @@ public class PanTool extends AbstractDataPanelTool {
                 if (cumulativeDeltaX > cumulativeDeltaY) {
 
                     // Horizontal scrolling
-                    getReferenceFame().shiftOriginPixelsPanning(deltaX);
+                    getReferenceFame().shiftOriginPixelsPanning(
+                            getReferenceFame().isInverted() ? -deltaX : deltaX);
                 } else {
                     // Vertical Scrolling 
                     int totalYChange = (int) (lastMousePoint.getY() - e.getY());

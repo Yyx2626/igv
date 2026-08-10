@@ -53,6 +53,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.List;
 import java.util.Timer;
@@ -989,6 +990,44 @@ public class IGV implements IGVEventObserver {
 
     final public void saveImage(Component target, String extension) {
         saveImage(target, "igv_snapshot", extension);
+    }
+
+    /** Unified publication screenshot workflow for image cropping and optional binned data. */
+    public void saveScreenshot() {
+        ScreenshotDialog.Options options = ScreenshotDialog.show(mainFrame);
+        if (options == null) return;
+        List<File> outputs = new ArrayList<>();
+        outputs.add(options.imageFile());
+        if (options.outputDataTsv()) outputs.add(options.dataFile());
+        List<File> existing = outputs.stream().filter(File::exists).toList();
+        if (!existing.isEmpty()) {
+            int answer = JOptionPane.showConfirmDialog(mainFrame,
+                    "Replace existing output file" + (existing.size() > 1 ? "s" : "") + "?",
+                    "Confirm Replace", JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (answer != JOptionPane.OK_OPTION) return;
+        }
+
+        WaitCursorManager.CursorToken token = null;
+        try {
+            token = WaitCursorManager.showWaitCursor();
+            File parent = options.imageFile().getAbsoluteFile().getParentFile();
+            if (parent != null) Files.createDirectories(parent.toPath());
+            contentPane.getStatusBar().setMessage("Exporting screenshot...");
+            ScreenshotView view = new ScreenshotView(getMainPanel(), options.includeCoordinates(), options.includeTrackNames());
+            String result = SnapshotUtilities.doComponentSnapshot(view, options.imageFile(), options.format(), false);
+            if (!"OK".equals(result)) throw new IOException(result);
+            if (options.outputDataTsv()) {
+                int bins = Math.max(1, PreferencesManager.getPreferences().getAsInt(Constants.SCREENSHOT_DATA_BINS));
+                ScreenshotDataExporter.export(this, options.dataFile(), bins);
+            }
+            if (parent != null) PreferencesManager.getPreferences().setLastSnapshotDirectory(parent.getAbsolutePath());
+        } catch (Exception e) {
+            log.error("Error exporting screenshot", e);
+            MessageUtils.showMessage("Error exporting screenshot: " + e.getMessage());
+        } finally {
+            if (token != null) WaitCursorManager.removeWaitCursor(token);
+            resetStatusMessage();
+        }
     }
 
     final public void saveImage(Component target, String title, String extension) {

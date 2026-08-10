@@ -1097,11 +1097,11 @@ public class AlignmentRenderer {
                         if (totalTextWidth <= width + 2 * distanceFromArrow) {
                             if (leftContigLabel != null) {
                                 g.setColor(ChromosomeColors.getColor(leftContigLabel));
-                                g.drawString(leftContigLabel, xLeft + distanceFromArrow, yBottom - 1);
+                                GraphicUtils.drawStringUpright(g, leftContigLabel, xLeft + distanceFromArrow, yBottom - 1);
                             }
                             if (rightContigLabel != null) {
                                 g.setColor(ChromosomeColors.getColor(rightContigLabel));
-                                g.drawString(rightContigLabel, xRight - (rightContigWidth + distanceFromArrow), yBottom - 1);
+                                GraphicUtils.drawStringUpright(g, rightContigLabel, xRight - (rightContigWidth + distanceFromArrow), yBottom - 1);
                             }
                         }
                     }

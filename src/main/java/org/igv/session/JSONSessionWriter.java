@@ -93,6 +93,12 @@ public class JSONSessionWriter {
         if (locus != null && !FrameManager.isGeneListMode()) {
             sessionObject.put(SessionAttribute.LOCUS, locus);
         }
+        boolean invertedCoordinates = FrameManager.getFrames().stream()
+                .filter(ReferenceFrame::isVisible)
+                .findFirst()
+                .map(ReferenceFrame::isInverted)
+                .orElse(FrameManager.getDefaultFrame().isInverted());
+        sessionObject.put(SessionAttribute.INVERTED_COORDINATES, invertedCoordinates);
 
         int nextAutoscaleGroup = session.getNextAutoscaleGroup();
         if (nextAutoscaleGroup > 1) {
@@ -196,4 +202,3 @@ public class JSONSessionWriter {
     }
 
 }
-

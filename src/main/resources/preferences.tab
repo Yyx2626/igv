@@ -8,6 +8,7 @@ ENABLE_GOOGLE_MENU	Enable Google access	boolean	FALSE	Enable loading from Google
 FLANKING_REGION	"Search for feature" padding region in bp, < 0 is interpreted as a percentage.	integer	2000	
 DEFAULT_VISIBILITY_WINDOW	Default visibility window (kilobases), < 0 disables visibility window.	float	-1
 FIT_TO_VIEWPORT_MAX_ROWS	Maximum number of rows rendered when fitting track data to the viewport height.	integer	2000
+SCREENSHOT.DATA_BINS	Number of equal genomic bins for numeric tracks and TSV export	integer	1500
 
 ## Session Autosave
 AUTOSAVE_ON_EXIT	Automatically save session on exit	boolean	TRUE

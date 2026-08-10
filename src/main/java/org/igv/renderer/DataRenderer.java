@@ -99,11 +99,11 @@ public abstract class DataRenderer implements Renderer<LocusScore> {
                     : darkMode && !prefs.hasExplicitValue(TRACK_BACKGROUND_COLOR)
                     ? UIManager.getColor("Panel.background")
                     : prefs.getAsColor(TRACK_BACKGROUND_COLOR);
-            Graphics2D axisBackgroundGraphics = context.getGraphic2DForColor(axisBackground);
+            Graphics2D axisBackgroundGraphics = context.getScreenGraphic2DForColor(axisBackground);
 
             axisBackgroundGraphics.fillRect(axisRect.x, axisRect.y, axisRect.width, axisRect.height);
 
-            Graphics2D axisGraphics = context.getGraphic2DForColor(axisLineColor);
+            Graphics2D axisGraphics = context.getScreenGraphic2DForColor(axisLineColor);
 
             axisGraphics.drawLine(rect.x + AXIS_AREA_WIDTH, rect.y, rect.x + AXIS_AREA_WIDTH,
                     rect.y + rect.height);
@@ -133,7 +133,7 @@ public abstract class DataRenderer implements Renderer<LocusScore> {
      */
     public static void drawScale(DataRange range, RenderContext context, Rectangle arect) {
         if (range != null && context.multiframe == false) {
-            Graphics2D g = (Graphics2D) context.getGraphics().create();
+            Graphics2D g = context.createScreenGraphics();
             if(Globals.isDarkMode()) {
                 g.setColor(Color.WHITE);
             } else {
@@ -146,7 +146,7 @@ public abstract class DataRenderer implements Renderer<LocusScore> {
                 String fmtString = range.getMaximum() > 10 ? "%.0f" : "%.2f";
                 String maxString = String.format(fmtString, range.getMaximum());
                 String scale = "[" + minString + " - " + maxString + "]";
-                g.drawString(scale, arect.x + 5, arect.y + 10);
+                GraphicUtils.drawStringUpright(g, scale, arect.x + 5, arect.y + 10);
 
             } finally {
                 g.dispose();

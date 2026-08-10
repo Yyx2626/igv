@@ -91,6 +91,8 @@ public class ReferenceFrame {
      * The location (x axis) locationScale in base pairs / virtual pixel
      */
     protected volatile double scale;
+    /** Display direction only; genomic loading and cache ranges remain ascending. */
+    private volatile boolean inverted;
 
     protected Locus initialLocus = null;
     private InsertionMarker expandedInsertion;
@@ -124,6 +126,7 @@ public class ReferenceFrame {
         this.widthInPixels = otherFrame.widthInPixels;
         this.zoom = otherFrame.zoom;
         this.maxZoom = otherFrame.maxZoom;
+        this.inverted = otherFrame.inverted;
         this.eventBus = eventBus;
     }
 
@@ -457,7 +460,7 @@ public class ReferenceFrame {
     }
 
     public double getEnd() {
-        return widthInPixels > 0 ? getChromosomePosition(widthInPixels) : initialLocus != null ? initialLocus.getEnd() : 0;
+        return widthInPixels > 0 ? getForwardChromosomePosition(widthInPixels) : initialLocus != null ? initialLocus.getEnd() : 0;
     }
 
     public int getZoom() {
@@ -521,6 +524,13 @@ public class ReferenceFrame {
      * @return
      */
     public double getChromosomePosition(int screenPosition) {
+        if (inverted) {
+            screenPosition = widthInPixels - screenPosition;
+        }
+        return getForwardChromosomePosition(screenPosition);
+    }
+
+    private double getForwardChromosomePosition(int screenPosition) {
         InsertionMarker i = expandedInsertion;
         if (i != null) {
             int insertionPixelPosition = (int) ((i.position - origin) / scale);
@@ -556,13 +566,22 @@ public class ReferenceFrame {
      * @return screen position (pixels)
      */
     public int getScreenPosition(double chromosomePosition) {
-
+        int forwardPosition;
         // If there is an expanded insertion in view we need to account for the empty screen space
         if (expandedInsertion != null && chromosomePosition > expandedInsertion.position) {
-            return (int) ((chromosomePosition + expandedInsertion.size - origin) / getScale());
+            forwardPosition = (int) ((chromosomePosition + expandedInsertion.size - origin) / getScale());
         } else {
-            return (int) ((chromosomePosition - origin) / getScale());
+            forwardPosition = (int) ((chromosomePosition - origin) / getScale());
         }
+        return inverted ? widthInPixels - forwardPosition : forwardPosition;
+    }
+
+    public boolean isInverted() {
+        return inverted;
+    }
+
+    public void setInverted(boolean inverted) {
+        this.inverted = inverted;
     }
 
 
@@ -775,4 +794,3 @@ public class ReferenceFrame {
 
 
 }
-

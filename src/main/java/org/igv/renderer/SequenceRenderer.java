@@ -205,7 +205,7 @@ public class SequenceRenderer {
         // the vertical starting coordinate
         int msgY = y + h / 2 - descent / 2 + ascent / 2;
 
-        g.drawChars(chars, 0, 1, msgX, msgY);
+        GraphicUtils.drawStringUpright(g, new String(chars, 0, 1), msgX, msgY);
 
     }
 

@@ -89,6 +89,22 @@ public class ReferenceFrameTest extends AbstractHeadlessTest{
     }
 
     @Test
+    public void invertedDisplayReversesPixelMappingWithoutReversingQueryRange() {
+        frame.jumpTo(new Locus("chr1", 1000, 2000));
+        double start = frame.getOrigin();
+        double end = frame.getEnd();
+
+        frame.setInverted(true);
+
+        assertEquals(end, frame.getChromosomePosition(0), 1.0);
+        assertEquals(start, frame.getChromosomePosition(frame.getWidthInPixels()), 1.0);
+        assertEquals(frame.getWidthInPixels(), frame.getScreenPosition(start), 1.0);
+        assertEquals(0, frame.getScreenPosition(end), 1.0);
+        assertEquals(end, frame.getEnd(), 1.0);
+        assertConsistent();
+    }
+
+    @Test
     public void testDoZoomIncrement() throws Exception{
         frame.setChromosomeName("chr1");
 

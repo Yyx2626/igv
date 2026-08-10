@@ -27,9 +27,20 @@ For the original, unmodified IGV project, visit
 
 ### Major customizations
 
+- **Publication screenshot and data export:** export PNG or SVG figures with
+  optional genomic coordinates and track names, append the visible 1-based
+  coordinate range to filenames, and write matching binned TSV data. TSV export
+  preserves merged and average-track structure, reports missing values as
+  `NA`, and includes strand-labelled reference sequence at base resolution.
+- **Reversible genomic display:** invert the horizontal genomic axis while
+  keeping labels readable; feature and sequence direction indicators reverse
+  with the view, and the state persists in JSON sessions.
 - **Track pairing:** pair two tracks as top and bottom members, edit their data
-  ranges together, autoscale paired sides independently, and persist pairing in
-  JSON sessions.
+  ranges together, autoscale paired sides independently, flip their Y axes and
+  top/bottom positions together, and persist pairing in JSON sessions.
+- **Overlay workflow:** use consistent context menus whether an overlay is
+  checked or unchecked, adjust and persist overlay transparency, separate its
+  members, and avoid renderer controls that cannot affect merged rendering.
 - **Numbered track groups:** define, extend, and recall groups 1-9 with keyboard
   shortcuts or the group-tab controls below the track area.
 - **Average with error bars:** combine selected tracks into a synthetic mean
@@ -49,6 +60,8 @@ For the original, unmodified IGV project, visit
   track background gaps, and error bars being clipped by autoscaling.
 - Fixed selection behavior for Shift-click, right-click, checkboxes, and mixed
   multi-track context menus.
+- Added configurable equal-width binning for numeric display and screenshot TSV
+  export (1500 bins by default).
 - Fixed JSON session restoration for local merged/average tracks, pair-group
   columns, group tabs, track order, restored data ranges, and stale pair links.
 - Fixed missing-value statistics and pixel alignment in average/error-bar

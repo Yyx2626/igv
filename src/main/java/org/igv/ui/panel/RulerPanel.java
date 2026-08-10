@@ -319,7 +319,7 @@ public class RulerPanel extends JPanel {
         int l = (int) (nTick * spacing);
         int x = frame.getScreenPosition(l - 1 + 0.5);    // 0 vs 1 based coordinates, then center over base
         //int strEnd = Integer.MIN_VALUE;
-        while (x < getWidth()) {
+        while (frame.isInverted() ? x > 0 : x < getWidth()) {
             l = (int) (nTick * spacing);
             x = frame.getScreenPosition(l - 1 + 0.5);
             String chrPosition = formatNumber((double) l / ts.getUnitMultiplier()) +
@@ -384,6 +384,9 @@ public class RulerPanel extends JPanel {
             int gStart = genome.getGenomeCoordinate(chrName, 0);
             int x = (int) (gStart / scale);
             int dw = (int) (chrLength / (locationUnit * scale));
+            if (frame.isInverted()) {
+                x = getWidth() - x - dw;
+            }
 
             if (x > 0) {
                 g.drawLine(x, getHeight() - 10, x, getHeight() - 2);
@@ -452,8 +455,13 @@ public class RulerPanel extends JPanel {
                 c = expandedInsertionColor;
                 x0 = frame.getScreenPosition(insertionMarker.position);
                 x1 = (int) ((insertionMarker.position + insertionMarker.size - frame.origin) / frame.getScale());
+                if (frame.isInverted()) {
+                    x1 = getWidth() - x1;
+                }
+                int left = Math.min(x0, x1);
+                int right = Math.max(x0, x1);
                 p = new Polygon(
-                        new int[]{x0 - w, x1 + w, x1, x0},
+                        new int[]{left - w, right + w, right, left},
                         new int[]{y, y, y + INSERTION_ROW_HEIGHT, y + INSERTION_ROW_HEIGHT}, 4);
 
 

@@ -125,12 +125,7 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         Graphics2D graphics2D = (Graphics2D) g;
         Rectangle clip = graphics2D.getClipBounds();
         if (clip != null) {
-            Color override = getTrack() == null ? null : getTrack().getBackgroundColorOverride();
-            Color background = override != null ? override
-                    : darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.TRACK_BACKGROUND_COLOR)
-                    ? UIManager.getColor("Panel.background")
-                    : PreferencesManager.getPreferences().getAsColor(Constants.TRACK_BACKGROUND_COLOR);
-            graphics2D.setColor(background);
+            graphics2D.setColor(getEffectiveTrackBackground());
             graphics2D.fillRect(clip.x, clip.y, clip.width, clip.height);
         }
         final Rectangle visibleRect = getVisibleRect();
@@ -155,6 +150,7 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         }
 
         RenderContext context = null;
+        Graphics2D trackGraphics = null;
         try {
 
             final Rectangle trackRectangle = new Rectangle(getBounds());
@@ -162,7 +158,8 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             trackRectangle.y = 0;
             final Rectangle clipBounds = g.getClipBounds();
 
-            context = new RenderContext(this, graphics2D, frame, trackRectangle, visibleRect, clipBounds);
+            trackGraphics = createTrackGraphics(graphics2D, getWidth());
+            context = new RenderContext(this, trackGraphics, frame, trackRectangle, visibleRect, clipBounds);
 
             painter.paint(getTrack(), context);
 
@@ -184,6 +181,9 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         } finally {
             if (context != null) {
                 context.dispose();
+            }
+            if (trackGraphics != null) {
+                trackGraphics.dispose();
             }
         }
     }
@@ -210,10 +210,14 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
     public void paintOffscreen(final Graphics2D g, Rectangle rect, boolean batch) {
 
         RenderContext context = null;
+        Graphics2D trackGraphics = null;
 
 
         try {
-            context = new RenderContext(null, g, frame, rect, rect, rect);
+            g.setColor(getEffectiveTrackBackground());
+            g.fillRect(rect.x, rect.y, rect.width, rect.height);
+            trackGraphics = createTrackGraphics(g, rect.width);
+            context = new RenderContext(null, trackGraphics, frame, rect, rect, rect);
             Insets insets = getInsets();
             Rectangle contentRect = new Rectangle(
                     rect.x + insets.left,
@@ -228,7 +232,27 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             if (context != null) {
                 context.dispose();
             }
+            if (trackGraphics != null) {
+                trackGraphics.dispose();
+            }
         }
+    }
+
+    private Color getEffectiveTrackBackground() {
+        Color override = getTrack() == null ? null : getTrack().getBackgroundColorOverride();
+        return override != null ? override
+                : darkMode && !PreferencesManager.getPreferences().hasExplicitValue(Constants.TRACK_BACKGROUND_COLOR)
+                ? UIManager.getColor("Panel.background")
+                : PreferencesManager.getPreferences().getAsColor(Constants.TRACK_BACKGROUND_COLOR);
+    }
+
+    private Graphics2D createTrackGraphics(Graphics2D source, int width) {
+        Graphics2D result = (Graphics2D) source.create();
+        if (frame.isInverted()) {
+            result.translate(width, 0);
+            result.scale(-1, 1);
+        }
+        return result;
     }
 
     @Override
@@ -441,7 +465,7 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
                     if (zoomIncr > Integer.MIN_VALUE) {
                         frame.doZoomIncrement(zoomIncr);
                     } else if (shiftOriginPixels > Integer.MIN_VALUE) {
-                        frame.shiftOriginPixels(shiftOriginPixels);
+                        frame.shiftOriginPixels(frame.isInverted() ? -shiftOriginPixels : shiftOriginPixels);
                     } else {
                         return;
                     }

@@ -34,7 +34,7 @@ public class GraphicUtils {
         // the vertical starting coordinate
         int msgY = y + h / 2 - descent / 2 + ascent / 2;
 
-        g.drawChars(chars, 0, 1, msgX, msgY);
+        drawStringUpright(g, new String(chars, 0, 1), msgX, msgY);
 
     }
 
@@ -75,7 +75,7 @@ public class GraphicUtils {
         if(Globals.isDarkMode()) {
             g.setColor(Color.WHITE);
         }
-        g.drawString(text, xs, ys);
+        drawStringUpright(g, text, xs, ys);
         g.setColor(origColor);
     }
 
@@ -122,7 +122,7 @@ public class GraphicUtils {
         if (rightJustify) {
             drawRightJustifiedText(text, rect.x + rect.width - margin, yPos, g2D);
         } else {
-            g2D.drawString(text, margin, yPos);
+            drawStringUpright(g2D, text, margin, yPos);
         }
 
         g2D.setColor(originalColor);
@@ -142,8 +142,22 @@ public class GraphicUtils {
         FontMetrics fontMetrics = g.getFontMetrics();
         Rectangle2D textBounds = fontMetrics.getStringBounds(text, g);
         int x = right - (int) textBounds.getWidth();
-        g.drawString(text, x, y);
+        drawStringUpright(g, text, x, y);
 
+    }
+
+    /** Draw text upright even when its graphics has the horizontal mirror used by inverted genomic views. */
+    public static void drawStringUpright(Graphics g, String text, float x, float y) {
+        if (!(g instanceof Graphics2D) || ((Graphics2D) g).getTransform().getDeterminant() >= 0) {
+            g.drawString(text, (int) x, (int) y);
+            return;
+        }
+        Graphics2D upright = (Graphics2D) g.create();
+        float width = g.getFontMetrics().stringWidth(text);
+        upright.translate(2 * x + width, 0);
+        upright.scale(-1, 1);
+        upright.drawString(text, x, y);
+        upright.dispose();
     }
 
     public static void drawDottedDashLine(Graphics2D g, int x1, int y1, int x2,
@@ -292,7 +306,7 @@ public class GraphicUtils {
         // the vertical starting coordinate
         int msgY = y + h / 2 - descent / 2 + ascent / 2;
 
-        g.drawChars(chars, 0, 1, msgX, msgY);
+        drawStringUpright(g, new String(chars, 0, 1), msgX, msgY);
 
     }
 }

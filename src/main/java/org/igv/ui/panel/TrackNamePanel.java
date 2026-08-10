@@ -69,10 +69,7 @@ public class TrackNamePanel extends TrackPanelComponent implements Paintable {
 
                 fontGraphics = (Graphics2D) g.create();
 
-                Color override = getTrack() == null ? null : getTrack().getBackgroundColorOverride();
-                final Color backgroundColor = override != null ? override
-                        : darkMode ? UIManager.getColor("Panel.background")
-                        : PreferencesManager.getPreferences().getAsColor(Constants.TRACK_BACKGROUND_COLOR);
+                final Color backgroundColor = getEffectiveTrackBackground();
                 fontGraphics.setBackground(backgroundColor);
                 fontGraphics.setColor(backgroundColor);
                 fontGraphics.fillRect(visibleRect.x, visibleRect.y, visibleRect.width, visibleRect.height);
@@ -94,7 +91,12 @@ public class TrackNamePanel extends TrackPanelComponent implements Paintable {
 
 
     public void paintOffscreen(Graphics2D g, Rectangle rect, boolean batch) {
-        paintImpl(g, rect, rect, true);
+        Graphics2D snapshotGraphics = (Graphics2D) g.create();
+        snapshotGraphics.setColor(getEffectiveTrackBackground());
+        snapshotGraphics.fillRect(rect.x, rect.y, rect.width, rect.height);
+        snapshotGraphics.setColor(darkMode ? Color.WHITE : Color.BLACK);
+        paintImpl(snapshotGraphics, rect, rect, true);
+        snapshotGraphics.dispose();
     }
 
     @Override

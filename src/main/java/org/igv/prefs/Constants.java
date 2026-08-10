@@ -47,6 +47,7 @@ final public class Constants {
     public static final String LAST_EXPORTED_REGION_DIRECTORY = "LAST_EXPORTED_REGION_DIRECTORY";
     public static final String LAST_TRACK_DIRECTORY = "LAST_TRACK_DIRECTORY";
     public static final String LAST_SNAPSHOT_DIRECTORY = "LAST_SNAPSHOT_DIRECTORY";
+    public static final String SCREENSHOT_DATA_BINS = "SCREENSHOT.DATA_BINS";
     public static final String LAST_GENOME_IMPORT_DIRECTORY = "LAST_GENOME_IMPORT_DIRECTORY";
     public static final String DEFINE_GENOME_INPUT_DIRECTORY_KEY = "DEFINE_GENOME_INPUT_DIRECTORY_KEY";
     public static final String DEFAULT_GENOME = "DEFAULT_GENOME_KEY";

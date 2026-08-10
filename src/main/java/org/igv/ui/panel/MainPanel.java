@@ -827,6 +827,14 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
         return dataPanelWidth;
     }
 
+    public int getGenomicHeaderHeight() {
+        return applicationHeaderPanel.getHeight();
+    }
+
+    public void setCoordinatesInverted(boolean inverted) {
+        UIUtilities.invokeAndWaitOnEventThread(() -> nameHeaderPanel.setCoordinatesInverted(inverted));
+    }
+
     /**
      * Returns the total left offset for panels, which includes the drag handle width
      * plus the selection panel width if selection panels are visible.
@@ -895,26 +903,41 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
 
     public void paintOffscreen(Graphics2D g, Rectangle rect, boolean batch) {
 
+        paintOffscreen(g, rect, batch, true);
+    }
+
+    /** Paints a publication screenshot without relying on a destructive vertical crop. */
+    public void paintOffscreen(Graphics2D g, Rectangle rect, boolean batch, boolean includeGenomicHeader) {
+
+        Graphics2D contentGraphics = (Graphics2D) g.create();
+        contentGraphics.setColor(computeGeneralBackground());
+        contentGraphics.fillRect(rect.x, rect.y, rect.width, rect.height);
+
         // Header
         int width = applicationHeaderPanel.getWidth();
         int height = applicationHeaderPanel.getHeight();
 
-        Graphics2D headerGraphics = (Graphics2D) g.create();
-        Rectangle headerRect = new Rectangle(0, 0, width, height);
-        applicationHeaderPanel.paintOffscreen(headerGraphics, headerRect, batch);
-        headerGraphics.dispose();
+        if (includeGenomicHeader) {
+            Graphics2D headerGraphics = (Graphics2D) contentGraphics.create();
+            Rectangle headerRect = new Rectangle(0, 0, width, height);
+            applicationHeaderPanel.paintOffscreen(headerGraphics, headerRect, batch);
+            headerGraphics.dispose();
+            contentGraphics.translate(0, height);
+        }
 
         // Now loop through track panels
-        g.translate(0, height);
-
         // Get the components of the center pane and sort by Y position.
         Component[] components = trackPanelContainer.getComponents();
+        if (components.length == 0) {
+            contentGraphics.dispose();
+            return;
+        }
         Arrays.sort(components, Comparator.comparingInt(Component::getY));
 
         int dy = components[0].getY();
         for (Component c : components) {
 
-            Graphics2D g2d = (Graphics2D) g.create();
+            Graphics2D g2d = (Graphics2D) contentGraphics.create();
             g2d.translate(0, dy);
 
             if (c instanceof TrackPanelScrollPane) {
@@ -937,6 +960,7 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
             g2d.dispose();
 
         }
+        contentGraphics.dispose();
     }
 
     /**
