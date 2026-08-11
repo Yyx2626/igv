@@ -27,43 +27,27 @@ For the original, unmodified IGV project, visit
 
 ### Major customizations
 
-- **Publication screenshot and data export:** export PNG or SVG figures with
-  optional genomic coordinates and track names, append the visible 1-based
-  coordinate range to filenames, and write matching binned TSV data. TSV export
-  preserves merged and average-track structure, reports missing values as
-  `NA`, and includes strand-labelled reference sequence at base resolution.
-- **Reversible genomic display:** invert the horizontal genomic axis while
-  keeping labels readable; feature and sequence direction indicators reverse
-  with the view, and the state persists in JSON sessions.
-- **Regional display transformations (preview):** attach display-only rules to
-  regions of interest to collapse an interval, invert coordinates for selected
-  tracks, flip or customize regional Y ranges, and override background,
-  foreground, positive, or negative colors. Settings are available from Region
-  Navigator and region/track context menus, support nested inversions, and lock
-  ROI boundaries until reset. Some minor rendering and UI issues remain.
-- **Track pairing:** pair two tracks as top and bottom members, edit their data
-  ranges together, autoscale paired sides independently, flip their Y axes and
-  top/bottom positions together, and persist pairing in JSON sessions.
-- **Overlay workflow:** use consistent context menus whether an overlay is
-  checked or unchecked, adjust and persist overlay transparency, separate its
-  members, and avoid renderer controls that cannot affect merged rendering.
-- **Numbered track groups:** define, extend, and recall groups 1-9 with keyboard
-  shortcuts or the group-tab controls below the track area.
-- **Undo and redo:** recover the 20 most recent application edits from the Edit
-  menu or standard keyboard shortcuts. This covers loading/removing tracks;
-  data ranges, autoscaling, colors, height, renderer and window function;
-  pairing and paired Y-axis flips; track reordering; Average/Restore and
-  Overlay/Separate; ROI additions/deletions; and accepted Regional Settings.
-  Track objects are retained only while needed by the bounded history, and
-  session or genome changes start a fresh, non-undoable baseline.
 - **Average with error bars:** combine selected tracks into a synthetic mean
   track with SEM, SD, or no error bars; configure missing-value handling,
   windowing, rendering, color, cap style, and restore the original tracks.
-- **Appearance controls:** configure global or per-track backgrounds and divider
-  colors/heights, customize data-range mid-line colors, and use visually
-  zero-height dividers that remain draggable through a floating hover overlay.
-- **Portable launchers:** select bundled JDK 21 runtimes by operating system and
-  CPU architecture on macOS and Windows.
+- **Track pairing and track groups:** pair top and bottom tracks for coordinated
+  range editing, independent autoscaling, and paired Y-axis flips; organize and
+  recall numbered track groups 1-9 with shortcuts or group-tab controls.
+- **Invert genomic coordinates:** reverse the horizontal genomic axis while
+  keeping text and Y-axis labels upright; feature geometry, sequence direction,
+  screenshots, TSV output, and JSON sessions follow the inverted view.
+- **Regional settings:** attach display-only rules to regions of interest to
+  collapse intervals, invert coordinates for selected tracks,
+  customize regional Y ranges and colors, and support nested transformations.
+- **Customizable appearance:** control track backgrounds, borders, dividers,
+  data-range mid-lines, and related global or per-track styling to prepare
+  consistent publication-quality figures.
+- **Publication screenshot and data export:** export PNG or SVG figures with
+  optional genomic coordinates and track names, plus matching binned TSV data
+  that preserves merged, average, and base-resolution sequence information.
+- **Undo and redo:** recover the 20 most recent track, pairing, composite-track,
+  ROI, and Regional Settings edits from the Edit menu or standard shortcuts;
+  session or genome changes start a fresh history.
 
 ### Minor fixes and debugging
 

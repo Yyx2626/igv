@@ -5,6 +5,10 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
 
 ## August 11, 2026
 
+- Completed and stabilized Regional Settings after its initial preview,
+  including regional rendering, navigation, nested coordinate transforms,
+  sequence direction, annotation labels, track-setting transfer, screenshot/TSV
+  export, session persistence, and the remaining interaction fixes listed below.
 - Restored black ROI boundary guides on hover, made ROI strips 50% transparent,
   and made overlapping regions paint large-to-small and select the smallest
   containing region first.
@@ -87,10 +91,10 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
 
 ## August 10, 2026
 
-- Added a preview of ROI-level display transformations. Regions can collapse
-  from the display, invert coordinates for all or selected tracks, flip or
-  customize regional Y ranges, and override background, foreground, positive,
-  and negative colors without changing source data.
+- Added the initial preview of ROI-level display transformations. Regions can
+  collapse from the display, invert coordinates for all or selected tracks,
+  flip or customize regional Y ranges, and override background, foreground,
+  positive, and negative colors without changing source data.
 - Redesigned Region Navigator around a compact **Regional Settings** editor with
   row/column multi-selection, copy/paste, color and Y-axis controls,
   positive/negative color swapping, and cell/row/column/all reset actions. The
@@ -102,8 +106,9 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
   reset.
 - Fixed annotation labels disappearing inside coordinate-inverted regions,
   extended transparent-border region fills through boundary pixels, and
-  prevented exported SVG bars from crossing the zero-axis line. Regional
-  settings remain a preview with some known minor rendering/UI bugs.
+  prevented exported SVG bars from crossing the zero-axis line. At this stage,
+  Regional Settings still had known minor rendering and UI bugs that were fixed
+  on August 11.
 - Added automatic build identity to About IGV and terminal startup output:
   upstream/customization version, commit (including dirty state), deterministic
   `src/main/` tree SHA-256, build time, and SHA-256 of the running `igv.jar`. About
