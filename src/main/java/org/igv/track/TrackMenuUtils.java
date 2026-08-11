@@ -41,6 +41,7 @@ import org.igv.ui.panel.RegionalSettingsDialog;
 import org.igv.ui.panel.TrackPanel;
 import org.igv.ui.panel.TrackPanelScrollPane;
 import org.igv.ui.panel.TrackSelectionPanel;
+import org.igv.ui.undo.TrackStructureEdit;
 import org.igv.ui.util.FileDialogUtils;
 import org.igv.ui.util.MessageUtils;
 import org.igv.ui.util.UIUtilities;
@@ -350,11 +351,13 @@ public class TrackMenuUtils {
         item = new JMenuItem("Unset Track Color");
         item.setToolTipText("Revert track colors to default.");
         item.addActionListener(evt -> {
-            for (Track t : tracks) {
-                t.setColor(null);
-                t.setAltColor(null);
-                t.repaint();
-            }
+            IGV.getInstance().runUndoableTrackChange("Unset Track Colors", tracks, () -> {
+                for (Track t : tracks) {
+                    t.setColor(null);
+                    t.setAltColor(null);
+                    t.repaint();
+                }
+            });
         });
         items.add(item);
 
@@ -364,9 +367,8 @@ public class TrackMenuUtils {
             Color current = tracks.iterator().next().getBackgroundColorOverride();
             Color newColor = UIUtilities.showColorChooserDialog("Select Track Background Color", current);
             if (newColor != null) {
-                for (Track t : tracks) {
-                    t.setBackgroundColorOverride(newColor);
-                }
+                IGV.getInstance().runUndoableTrackChange("Set Track Background Color", tracks,
+                        () -> tracks.forEach(t -> t.setBackgroundColorOverride(newColor)));
                 IGV.getInstance().repaint(tracks);
             }
         });
@@ -376,9 +378,8 @@ public class TrackMenuUtils {
             item = new JMenuItem("Unset Track Background Color");
             item.setToolTipText("Revert to the global Track background color preference.");
             item.addActionListener(evt -> {
-                for (Track t : tracks) {
-                    t.setBackgroundColorOverride(null);
-                }
+                IGV.getInstance().runUndoableTrackChange("Unset Track Background Color", tracks,
+                        () -> tracks.forEach(t -> t.setBackgroundColorOverride(null)));
                 IGV.getInstance().repaint(tracks);
             });
             items.add(item);
@@ -448,8 +449,11 @@ public class TrackMenuUtils {
                 && list.get(0).getPairId().equals(list.get(1).getPairId()))) {
             JMenuItem item = new JMenuItem("Pair Tracks");
             item.addActionListener(evt -> {
-                TrackPairing.unpair(list, IGV.getInstance().getAllTracks());
-                TrackPairing.pair(list.get(0), list.get(1));
+                List<Track> affected = new ArrayList<>(IGV.getInstance().getAllTracks());
+                IGV.getInstance().runUndoableTrackChange("Pair Tracks", affected, () -> {
+                    TrackPairing.unpair(list, affected);
+                    TrackPairing.pair(list.get(0), list.get(1));
+                });
                 IGV.getInstance().repaint(list);
             });
             items.add(item);
@@ -458,7 +462,9 @@ public class TrackMenuUtils {
         if (anyPaired) {
             JMenuItem item = new JMenuItem("Unpair Tracks");
             item.addActionListener(evt -> {
-                TrackPairing.unpair(list, IGV.getInstance().getAllTracks());
+                List<Track> affected = new ArrayList<>(IGV.getInstance().getAllTracks());
+                IGV.getInstance().runUndoableTrackChange("Unpair Tracks", affected,
+                        () -> TrackPairing.unpair(list, affected));
                 IGV.getInstance().repaint(list);
             });
             items.add(item);
@@ -530,6 +536,8 @@ public class TrackMenuUtils {
         items.add(new JPopupMenu.Separator());
         JMenuItem restoreItem = new JMenuItem(avgTracks.size() > 1 ? "Restore Original Tracks (each)" : "Restore Original Tracks");
         restoreItem.addActionListener(e -> {
+            IGV igv = IGV.getInstance();
+            TrackStructureEdit.Snapshot before = igv.captureTrackStructure(avgTracks);
             List<Track> allRestoredMembers = new ArrayList<>();
             boolean regionalSettingsChanged = false;
             Set<RegionOfInterest> removedPairModes = new LinkedHashSet<>();
@@ -560,20 +568,21 @@ public class TrackMenuUtils {
                 if (TrackPairing.isPaired(avgTrack)) {
                     TrackPairing.unpair(List.of(avgTrack), IGV.getInstance().getAllTracks());
                 }
-                IGV.getInstance().deleteTracks(List.of(avgTrack));
-                IGV.getInstance().addTracks(new ArrayList<>(members));
+                igv.replaceTracksPreserving(List.of(avgTrack), new ArrayList<>(members));
                 allRestoredMembers.addAll(members);
             }
             // Deferred until every avgTrack in this batch has been restored - see
             // TrackPairing.reconcilePairingAfterRestore(): a member's original partner may
             // be one of THIS batch's other avgTracks' members, still dormant (not yet a
             // standalone track) until its own turn through the loop above completes.
-            List<Track> allTracks = IGV.getInstance().getAllTracks();
+            List<Track> allTracks = igv.getAllTracks();
             for (Track member : allRestoredMembers) {
                 TrackPairing.reconcilePairingAfterRestore(member, allTracks);
             }
             if (regionalSettingsChanged) RegionalTrackSettingsTransfer.publishChanges();
-            IGV.getInstance().repaint();
+            igv.repaint();
+            igv.recordUndoableTrackStructureChange(
+                    "Restore Original Tracks", before, avgTracks);
             RegionalTrackSettingsTransfer.showPairModeWarning(
                     "restoring average tracks", removedPairModes);
         });
@@ -681,7 +690,10 @@ public class TrackMenuUtils {
         items.add(getDataRangeItem(tracks));
 
         JMenuItem flipVertical = new JMenuItem("Flip Y-Axis");
-        flipVertical.addActionListener(evt -> TrackPairing.flipVertically(tracks));
+        flipVertical.addActionListener(evt -> {
+            IGV.getInstance().runUndoableTrackStructureChange("Flip Y-Axis", tracks,
+                    () -> TrackPairing.flipVertically(tracks));
+        });
         items.add(flipVertical);
 
         items.add(getHeatmapScaleItem(tracks));
@@ -1019,9 +1031,9 @@ public class TrackMenuUtils {
     }
 
     private static void changeStatType(String statType, Collection<Track> selectedTracks) {
-        for (Track track : selectedTracks) {
-            track.setWindowFunction(WindowFunction.valueOf(statType));
-        }
+        IGV.getInstance().runUndoableTrackChange("Set Window Function", selectedTracks,
+                () -> selectedTracks.forEach(track ->
+                        track.setWindowFunction(WindowFunction.valueOf(statType))));
         IGV.getInstance().repaint(selectedTracks);
     }
 
@@ -1115,11 +1127,13 @@ public class TrackMenuUtils {
                             prevAxisDefinition.isDrawBaseline(), dlg.isLog());
                     axisDefinition.setMidlineColor(dlg.getMidlineColor());
 
-                    for (Track track : selectedTracks) {
-                        track.setDataRange(axisDefinition);
-                        track.setAutoScale(false);
-                        track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
-                    }
+                    IGV.getInstance().runUndoableTrackChange("Set Data Range", selectedTracks, () -> {
+                        for (Track track : selectedTracks) {
+                            track.setDataRange(axisDefinition);
+                            track.setAutoScale(false);
+                            track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
+                        }
+                    });
                     IGV.getInstance().repaint(selectedTracks);
                 }
 
@@ -1149,16 +1163,18 @@ public class TrackMenuUtils {
         DataRange topRange = dlg.getTopDataRange(topDefaults.isDrawBaseline());
         DataRange bottomRange = dlg.getBottomDataRange(bottomDefaults.isDrawBaseline());
 
-        for (Track track : partition.top) {
-            track.setDataRange(topRange);
-            track.setAutoScale(false);
-            track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
-        }
-        for (Track track : partition.bottom) {
-            track.setDataRange(bottomRange);
-            track.setAutoScale(false);
-            track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
-        }
+        IGV.getInstance().runUndoableTrackChange("Set Paired Data Range", selectedTracks, () -> {
+            for (Track track : partition.top) {
+                track.setDataRange(topRange);
+                track.setAutoScale(false);
+                track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
+            }
+            for (Track track : partition.bottom) {
+                track.setDataRange(bottomRange);
+                track.setAutoScale(false);
+                track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
+            }
+        });
         IGV.getInstance().repaint(selectedTracks);
     }
 
@@ -1176,9 +1192,8 @@ public class TrackMenuUtils {
                 DataRange.Type scaleType = logScaleItem.isSelected() ?
                         DataRange.Type.LOG :
                         DataRange.Type.LINEAR;
-                for (Track t : selectedTracks) {
-                    t.getDataRange().setType(scaleType);
-                }
+                IGV.getInstance().runUndoableTrackChange("Set Log Scale", selectedTracks,
+                        () -> selectedTracks.forEach(t -> t.getDataRange().setType(scaleType)));
                 IGV.getInstance().repaint(selectedTracks);
             }
         });
@@ -1201,12 +1216,12 @@ public class TrackMenuUtils {
                 public void actionPerformed(ActionEvent evt) {
 
                     boolean autoScale = autoscaleItem.isSelected();
-                    for (Track t : selectedTracks) {
-                        t.setAutoScale(autoScale);
-                        if (autoScale) {
-                            t.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
+                    IGV.getInstance().runUndoableTrackChange("Set Autoscale", selectedTracks, () -> {
+                        for (Track t : selectedTracks) {
+                            t.setAutoScale(autoScale);
+                            if (autoScale) t.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
                         }
-                    }
+                    });
                     IGV.getInstance().repaint(selectedTracks);
                 }
             });
@@ -1220,33 +1235,34 @@ public class TrackMenuUtils {
 
         autoscaleItem.addActionListener(evt -> {
 
-            boolean anyPaired = selectedTracks.stream().anyMatch(TrackPairing::isPaired);
-            if (anyPaired) {
-                // Autoscale each pair's top-role tracks (plus any unpaired tracks) together
-                // as one group, and each pair's bottom-role tracks together as a separate
-                // group, rather than lumping top and bottom into a single shared scale.
-                TrackPairing.Partition partition = TrackPairing.partitionTopBottom(selectedTracks);
-                if (!partition.top.isEmpty()) {
-                    int topGroup = IGV.getInstance().getSession().getNextAutoscaleGroup();
-                    for (Track t : partition.top) {
-                        t.setAttributeValue(AttributeManager.GROUP_AUTOSCALE, autoscaleGroupLabel(topGroup));
+            IGV.getInstance().runUndoableTrackChange("Group Autoscale", selectedTracks, () -> {
+                boolean anyPaired = selectedTracks.stream().anyMatch(TrackPairing::isPaired);
+                if (anyPaired) {
+                    // Autoscale each pair's top-role tracks (plus any unpaired tracks) together
+                    // as one group, and each pair's bottom-role tracks as a separate group.
+                    TrackPairing.Partition partition = TrackPairing.partitionTopBottom(selectedTracks);
+                    if (!partition.top.isEmpty()) {
+                        int topGroup = IGV.getInstance().getSession().getNextAutoscaleGroup();
+                        for (Track t : partition.top) {
+                            t.setAttributeValue(AttributeManager.GROUP_AUTOSCALE, autoscaleGroupLabel(topGroup));
+                            t.setAutoScale(false);
+                        }
+                    }
+                    if (!partition.bottom.isEmpty()) {
+                        int bottomGroup = IGV.getInstance().getSession().getNextAutoscaleGroup();
+                        for (Track t : partition.bottom) {
+                            t.setAttributeValue(AttributeManager.GROUP_AUTOSCALE, autoscaleGroupLabel(bottomGroup));
+                            t.setAutoScale(false);
+                        }
+                    }
+                } else {
+                    int nextAutoscaleGroup = IGV.getInstance().getSession().getNextAutoscaleGroup();
+                    for (Track t : selectedTracks) {
+                        t.setAttributeValue(AttributeManager.GROUP_AUTOSCALE, autoscaleGroupLabel(nextAutoscaleGroup));
                         t.setAutoScale(false);
                     }
                 }
-                if (!partition.bottom.isEmpty()) {
-                    int bottomGroup = IGV.getInstance().getSession().getNextAutoscaleGroup();
-                    for (Track t : partition.bottom) {
-                        t.setAttributeValue(AttributeManager.GROUP_AUTOSCALE, autoscaleGroupLabel(bottomGroup));
-                        t.setAutoScale(false);
-                    }
-                }
-            } else {
-                int nextAutoscaleGroup = IGV.getInstance().getSession().getNextAutoscaleGroup();
-                for (Track t : selectedTracks) {
-                    t.setAttributeValue(AttributeManager.GROUP_AUTOSCALE, autoscaleGroupLabel(nextAutoscaleGroup));
-                    t.setAutoScale(false);
-                }
-            }
+            });
 
             PreferencesManager.getPreferences().setShowAttributeView(true);
             IGV.getInstance().revalidateTrackPanels();
@@ -1439,14 +1455,13 @@ public class TrackMenuUtils {
         if (selectedTracks.isEmpty()) {
             return;
         }
-        IGV.getInstance().deleteTracks(selectedTracks);
+        IGV.getInstance().deleteTracksUndoable(selectedTracks);
     }
 
 
     public static void changeRendererClass(final Collection<Track> selectedTracks, Class rendererClass) {
-        for (Track track : selectedTracks) {
-            track.setRendererClass(rendererClass);
-        }
+        IGV.getInstance().runUndoableTrackChange("Set Renderer", selectedTracks,
+                () -> selectedTracks.forEach(track -> track.setRendererClass(rendererClass)));
         IGV.getInstance().repaint(selectedTracks);
     }
 
@@ -1539,11 +1554,13 @@ public class TrackMenuUtils {
             return;
         }
 
-        for (Track track : selectedTracks) {
-            //We preserve the alpha value. This is motivated by MergedTracks
-            int currentAlpha = currentSelection != null ? currentSelection.getAlpha() : 255;
-            track.setColor(ColorUtilities.modifyAlpha(color, currentAlpha));
-        }
+        IGV.getInstance().runUndoableTrackChange("Set Positive Track Color", selectedTracks, () -> {
+            for (Track track : selectedTracks) {
+                //We preserve the alpha value. This is motivated by MergedTracks
+                int currentAlpha = currentSelection != null ? currentSelection.getAlpha() : 255;
+                track.setColor(ColorUtilities.modifyAlpha(color, currentAlpha));
+            }
+        });
         IGV.getInstance().repaint(selectedTracks);
     }
 
@@ -1563,9 +1580,9 @@ public class TrackMenuUtils {
             return;
         }
 
-        for (Track track : selectedTracks) {
-            track.setAltColor(ColorUtilities.modifyAlpha(color, currentSelection.getAlpha()));
-        }
+        IGV.getInstance().runUndoableTrackChange("Set Negative Track Color", selectedTracks,
+                () -> selectedTracks.forEach(track -> track.setAltColor(
+                        ColorUtilities.modifyAlpha(color, currentSelection.getAlpha()))));
         IGV.getInstance().repaint(selectedTracks);
     }
 
@@ -1718,9 +1735,9 @@ public class TrackMenuUtils {
             }
 
             value = Math.max(0, value);
-            for (Track track : selectedTracks) {
-                track.setHeight(value);
-            }
+            Integer finalValue = value;
+            IGV.getInstance().runUndoableTrackChange("Set Track Height", selectedTracks,
+                    () -> selectedTracks.forEach(track -> track.setHeight(finalValue)));
         });
         return item;
     }

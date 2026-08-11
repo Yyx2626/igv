@@ -114,13 +114,12 @@ class TrackPanelDropTargetListener implements DropTargetListener {
             }
         }
 
-        // Reorder the panels in the MainPanel
-        mainPanel.reorderPanels(orderedPanes);
-
-        // Update the moved track's order property to reflect its new position
-        mainPanel.updateMovedTrackOrder(droppedPanel);
+        // Reorder plus the persistent order update are one user transaction.
+        IGV.getInstance().runUndoableTrackStructureChange("Reorder Tracks", List.of(), () -> {
+            mainPanel.reorderPanels(orderedPanes);
+            mainPanel.updateMovedTrackOrder(droppedPanel);
+        });
 
         dtde.dropComplete(true);
     }
 }
-

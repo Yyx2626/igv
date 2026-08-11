@@ -13,6 +13,7 @@ import org.igv.renderer.XYPlotRenderer;
 import org.igv.ui.ErrorBarStyleDialog;
 import org.igv.ui.IGV;
 import org.igv.ui.action.RegionalTrackSettingsTransfer;
+import org.igv.ui.undo.TrackStructureEdit;
 import org.igv.ui.panel.ReferenceFrame;
 import org.igv.ui.util.UIUtilities;
 import org.json.JSONArray;
@@ -215,6 +216,8 @@ public class AverageErrorBarTrack extends DataSourceTrack {
         items.add(new JPopupMenu.Separator());
         JMenuItem restoreItem = new JMenuItem("Restore Original Tracks");
         restoreItem.addActionListener(e -> {
+            IGV igv = IGV.getInstance();
+            TrackStructureEdit.Snapshot before = igv.captureTrackStructure(List.of(this));
             // Derived from the current neighbors in the panel rather than trusting
             // getOrder() directly - see MainPanel.computeOrderForCurrentPosition().
             long order = IGV.getInstance().getMainPanel().computeOrderForCurrentPosition(this);
@@ -248,14 +251,15 @@ public class AverageErrorBarTrack extends DataSourceTrack {
             if (TrackPairing.isPaired(this)) {
                 TrackPairing.unpair(List.of(this), IGV.getInstance().getAllTracks());
             }
-            IGV.getInstance().deleteTracks(List.of(this));
-            IGV.getInstance().addTracks(new ArrayList<>(memberTracks));
-            List<Track> allTracks = IGV.getInstance().getAllTracks();
+            igv.replaceTracksPreserving(List.of(this), new ArrayList<>(memberTracks));
+            List<Track> allTracks = igv.getAllTracks();
             for (Track member : memberTracks) {
                 TrackPairing.reconcilePairingAfterRestore(member, allTracks);
             }
             if (regionalTransfer.changed()) RegionalTrackSettingsTransfer.publishChanges();
-            IGV.getInstance().repaint();
+            igv.repaint();
+            igv.recordUndoableTrackStructureChange(
+                    "Restore Original Tracks", before, List.of(this));
             RegionalTrackSettingsTransfer.showPairModeWarning(
                     "restoring the average track", regionalTransfer.pairModesRemoved());
         });

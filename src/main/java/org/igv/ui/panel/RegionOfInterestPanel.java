@@ -218,10 +218,8 @@ public class RegionOfInterestPanel extends JPanel {
         popupMenu.add(new JSeparator());
 
         item = new JMenuItem("Delete");
-        item.addActionListener(e -> {
-            IGV.getInstance().getSession().removeRegionsOfInterest(java.util.List.of(roi));
-            IGV.getInstance().repaint();
-        });
+        item.addActionListener(e -> IGV.getInstance()
+                .removeRegionsOfInterestUndoable(java.util.List.of(roi)));
         popupMenu.add(item);
 
         return popupMenu;
@@ -235,7 +233,7 @@ public class RegionOfInterestPanel extends JPanel {
                 && !chromosome.isBlank() && !Globals.CHR_ALL.equals(chromosome));
         add.addActionListener(event -> {
             var range = frame.getCurrentRange();
-            IGV.getInstance().addRegionOfInterest(new RegionOfInterest(
+            IGV.getInstance().addRegionOfInterestUndoable(new RegionOfInterest(
                     range.getChr(), range.getStart(), range.getEnd(), ""));
         });
         menu.add(add);

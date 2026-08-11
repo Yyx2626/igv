@@ -3,6 +3,7 @@ package org.igv.renderer;
 import org.junit.Test;
 
 import java.awt.Rectangle;
+import java.util.function.DoubleUnaryOperator;
 
 import static org.junit.Assert.assertEquals;
 
@@ -44,5 +45,31 @@ public class XYPlotRendererBoundaryTest {
         assertEquals(50, bar.y);
         assertEquals(80, bar.getMaxY(), 0);
         assertEquals(1, bar.width);
+    }
+
+    @Test
+    public void positiveDoubleErrorBarDoesNotCrossBaseline() {
+        ErrorBarStyle style = new ErrorBarStyle();
+        style.setCapStyle(ErrorBarStyle.CapStyle.DOUBLE);
+        DoubleUnaryOperator invertedPixel = value -> 100 - value;
+
+        int[] span = AverageErrorBarPainter.errorPixelSpan(
+                invertedPixel, 0, 10, 20, style);
+
+        assertEquals(70, span[0]);
+        assertEquals(100, span[1]);
+    }
+
+    @Test
+    public void negativeDoubleErrorBarDoesNotCrossBaseline() {
+        ErrorBarStyle style = new ErrorBarStyle();
+        style.setCapStyle(ErrorBarStyle.CapStyle.DOUBLE);
+        DoubleUnaryOperator invertedPixel = value -> 100 - value;
+
+        int[] span = AverageErrorBarPainter.errorPixelSpan(
+                invertedPixel, 0, -10, 20, style);
+
+        assertEquals(100, span[0]);
+        assertEquals(130, span[1]);
     }
 }

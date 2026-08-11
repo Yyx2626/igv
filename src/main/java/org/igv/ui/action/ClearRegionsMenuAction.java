@@ -34,8 +34,8 @@ public class ClearRegionsMenuAction extends MenuAction {
                         "Clear Regions",
                         JOptionPane.YES_NO_OPTION);
                 if (choice == JOptionPane.YES_OPTION) {
-                    igv.getSession().clearRegionsOfInterest();
-                    igv.repaint();
+                    igv.removeRegionsOfInterestUndoable(
+                            igv.getSession().getAllRegionsOfInterest());
                 }
             }
         });

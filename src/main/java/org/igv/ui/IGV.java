@@ -38,6 +38,11 @@ import org.igv.session.autosave.SessionAutosaveManager;
 import org.igv.track.*;
 import org.igv.ui.WaitCursorManager.CursorToken;
 import org.igv.ui.panel.*;
+import org.igv.ui.undo.IGVUndoManager;
+import org.igv.ui.undo.RegionCollectionEdit;
+import org.igv.ui.undo.TrackDeletionEdit;
+import org.igv.ui.undo.TrackStateEdit;
+import org.igv.ui.undo.TrackStructureEdit;
 import org.igv.ui.util.*;
 import org.igv.util.*;
 
@@ -84,6 +89,7 @@ public class IGV implements IGVEventObserver {
     private JRootPane rootPane;
     private IGVContentPane contentPane;
     private IGVMenuBar menuBar;
+    private final IGVUndoManager undoManager = new IGVUndoManager();
 
     // Glass panes
     Component glassPane;
@@ -314,6 +320,29 @@ public class IGV implements IGVEventObserver {
         repaint();
     }
 
+    public void addRegionOfInterestUndoable(RegionOfInterest roi) {
+        if (roi == null) return;
+        addRegionOfInterest(roi);
+        undoManager.addEdit(new RegionCollectionEdit(this, List.of(roi), true));
+    }
+
+    public void removeRegionsOfInterestUndoable(Collection<RegionOfInterest> regions) {
+        if (regions == null || regions.isEmpty()) return;
+        Set<RegionOfInterest> present = Collections.newSetFromMap(new IdentityHashMap<>());
+        present.addAll(session.getAllRegionsOfInterest());
+        List<RegionOfInterest> removed = regions.stream().filter(present::contains).toList();
+        if (removed.isEmpty()) return;
+        session.removeRegionsOfInterest(removed);
+        if (removed.contains(RegionOfInterestPanel.getSelectedRegion())) {
+            RegionOfInterestPanel.setSelectedRegion(null);
+        }
+        undoManager.addEdit(new RegionCollectionEdit(this, removed, false));
+        for (ReferenceFrame frame : FrameManager.getFrames()) {
+            frame.refreshRegionDisplayCoordinateMap();
+        }
+        repaint();
+    }
+
     public void beginROI(JButton button) {
         for (TrackPanel tp : getTrackPanels()) {
             TrackPanelScrollPane tsv = tp.getScrollPane();
@@ -370,6 +399,8 @@ public class IGV implements IGVEventObserver {
                 public void run() {
                     //Collect size statistics before loading
                     List<Map<TrackPanelScrollPane, Integer>> trackPanelAttrs = getTrackPanelAttrs();
+                    TrackStructureEdit.Snapshot before = captureTrackStructure(List.of());
+                    List<Track> loadedTracks = new ArrayList<>();
 
                     final MessageCollection messages = new MessageCollection();
                     for (final ResourceLocator locator : locators) {
@@ -388,6 +419,7 @@ public class IGV implements IGVEventObserver {
                             // Show progress after each locator, but add all tracks produced by
                             // that locator in one EDT/layout pass (e.g. alignment + coverage).
                             appendTracks(tracks);
+                            loadedTracks.addAll(tracks);
                         } catch (Exception e) {
                             log.error("Error loading track", e);
                             messages.append("Error loading " + locator + ": " + e.getMessage());
@@ -405,6 +437,7 @@ public class IGV implements IGVEventObserver {
                     //resetPanelHeights(trackPanelAttrs.get(0), trackPanelAttrs.get(1));
                     showLoadedTrackCount();
                     revalidateTrackPanels();
+                    recordUndoableTrackStructureChange("Load Tracks", before, loadedTracks);
                 }
 
                 public String getName() {
@@ -543,6 +576,30 @@ public class IGV implements IGVEventObserver {
         removeTracks(tracksToRemove);
     }
 
+    /** Remove visible tracks as one undoable user edit without unloading them. */
+    public void deleteTracksUndoable(Collection<? extends Track> tracksToRemove) {
+        List<MainPanel.DetachedTrackPanel> placements =
+                getMainPanel().detachTrackPanels(tracksToRemove);
+        if (placements.isEmpty()) return;
+        undoManager.addEdit(new TrackDeletionEdit(this, placements));
+        revalidateTrackPanels();
+        repaint();
+    }
+
+    /** Permanently release tracks held outside the UI by expired deletion history. */
+    public void disposeDetachedTracks(Collection<? extends Track> tracks) {
+        Set<Track> visible = Collections.newSetFromMap(new IdentityHashMap<>());
+        visible.addAll(getAllTracks());
+        for (Track track : tracks) {
+            if (track == null || visible.contains(track)) continue;
+            if (track instanceof IGVEventObserver observer) {
+                IGVEventBus.getInstance().unsubscribe(observer);
+            }
+            track.unload();
+            track.setViewport(null);
+        }
+    }
+
 
     /**
      * Return the panel with the given name.  This is called infrequently, and doesn't need to be fast (linear
@@ -594,6 +651,13 @@ public class IGV implements IGVEventObserver {
         for (Track track : tracksToReplace) {
             track.unload();
         }
+        revalidateTrackPanels();
+    }
+
+    /** Replace visible panes while retaining both sides for structural undo/redo. */
+    public void replaceTracksPreserving(Collection<? extends Track> tracksToReplace,
+                                        List<? extends Track> replacements) {
+        contentPane.getMainPanel().replaceTrackPanels(tracksToReplace, replacements);
         revalidateTrackPanels();
     }
 
@@ -706,6 +770,61 @@ public class IGV implements IGVEventObserver {
         return session;
     }
 
+    public IGVUndoManager getUndoManager() {
+        return undoManager;
+    }
+
+    /** Begin a new non-undoable session/genome baseline and release retained edits. */
+    public void clearUndoHistory() {
+        undoManager.discardAllEdits();
+    }
+
+    /** Run a user-visible track property mutation and record it as one atomic edit. */
+    public void runUndoableTrackChange(String name, Collection<? extends Track> tracks,
+                                       Runnable mutation) {
+        List<Track> ordered = new ArrayList<>();
+        if (tracks != null) {
+            for (Track track : tracks) if (track != null && !ordered.contains(track)) ordered.add(track);
+        }
+        List<TrackStateEdit.State> before = TrackStateEdit.capture(ordered);
+        mutation.run();
+        List<TrackStateEdit.State> after = TrackStateEdit.capture(ordered);
+        if (TrackStateEdit.differs(before, after)) {
+            undoManager.addEdit(new TrackStateEdit(name, before, after));
+        }
+    }
+
+    public void recordUndoableTrackChange(String name, List<TrackStateEdit.State> before,
+                                          Collection<? extends Track> tracks) {
+        List<TrackStateEdit.State> after = TrackStateEdit.capture(tracks);
+        if (TrackStateEdit.differs(before, after)) {
+            undoManager.addEdit(new TrackStateEdit(name, before, after));
+        }
+    }
+
+    /** Run a layout/composite mutation and retain an exact before/after workspace snapshot. */
+    public void runUndoableTrackStructureChange(String name,
+                                                Collection<? extends Track> extraTracks,
+                                                Runnable mutation) {
+        TrackStructureEdit.Snapshot before = TrackStructureEdit.capture(this, extraTracks);
+        mutation.run();
+        recordUndoableTrackStructureChange(name, before, extraTracks);
+    }
+
+    public TrackStructureEdit.Snapshot captureTrackStructure(
+            Collection<? extends Track> extraTracks) {
+        return TrackStructureEdit.capture(this, extraTracks);
+    }
+
+    public void recordUndoableTrackStructureChange(String name,
+                                                   TrackStructureEdit.Snapshot before,
+                                                   Collection<? extends Track> extraTracks) {
+        TrackStructureEdit.Snapshot after = TrackStructureEdit.capture(this, extraTracks);
+        if (TrackStructureEdit.differs(before, after)) {
+            undoManager.addEdit(new TrackStructureEdit(this, name, before, after));
+        }
+    }
+
 
     /**
      * Reset session state, and associate the session object with the given path to a session file.
@@ -714,6 +833,7 @@ public class IGV implements IGVEventObserver {
      */
     public void resetSession(String sessionPath) {
 
+        clearUndoHistory();
         session.reset(sessionPath);
         if (FrameManager.getFrames().size() > 1) {
             resetFrames();

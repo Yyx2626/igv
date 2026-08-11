@@ -82,7 +82,7 @@ public class RegionOfInterestTool extends AbstractDataPanelTool {
                                             null);
 
                             IGV.getInstance().endROI();
-                            IGV.getInstance().addRegionOfInterest(regionOfInterest);
+                            IGV.getInstance().addRegionOfInterestUndoable(regionOfInterest);
                             IGV.getInstance().repaint();
                         } finally {
                             roiButton.setSelected(false);

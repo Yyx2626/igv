@@ -14,6 +14,7 @@ import org.igv.track.Track;
 import org.igv.track.TrackMenuUtils;
 import org.igv.ui.IGV;
 import org.igv.ui.util.UIUtilities;
+import org.igv.ui.undo.TrackStateEdit;
 
 import javax.swing.*;
 import java.awt.*;
@@ -115,6 +116,8 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
      * earlier for the same symptom, which this codebase does still need for other reasons.
      */
     private boolean resizing = false;
+    private List<TrackStateEdit.State> resizeBefore = List.of();
+    private Track resizingTrack;
 
     /**
      * @param abovePane the scroll pane above this divider, or {@code null} if none
@@ -147,12 +150,20 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
                 }
                 dragStartY = e.getYOnScreen();
                 originalAboveHeight = getTrackHeight(effective);
+                resizingTrack = effective.getTrackPanel().getTrack();
+                resizeBefore = TrackStateEdit.capture(List.of(resizingTrack));
                 resizing = true;
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
+                if (resizing && resizingTrack != null) {
+                    IGV.getInstance().recordUndoableTrackChange(
+                            "Resize Track", resizeBefore, List.of(resizingTrack));
+                }
                 resizing = false;
+                resizingTrack = null;
+                resizeBefore = List.of();
                 if (e.isPopupTrigger()) {
                     showPopupMenu(e);
                 }
@@ -208,7 +219,8 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
             Integer current = track.getBorderHeightOverride() != null ? track.getBorderHeightOverride() : getGlobalDividerHeight();
             Integer value = TrackMenuUtils.getIntegerInput("Border height (pixels)", current);
             if (value != null) {
-                track.setBorderHeightOverride(Math.max(0, value));
+                IGV.getInstance().runUndoableTrackChange("Set Track Border Height", List.of(track),
+                        () -> track.setBorderHeightOverride(Math.max(0, value)));
                 revalidate();
                 repaint();
             }
@@ -220,7 +232,8 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
             Color current = track.getBorderColorOverride() != null ? track.getBorderColorOverride() : computeGlobalBorderColor();
             Color newColor = UIUtilities.showColorChooserDialog("Select Border Color", current);
             if (newColor != null) {
-                track.setBorderColorOverride(newColor);
+                IGV.getInstance().runUndoableTrackChange("Set Track Border Color", List.of(track),
+                        () -> track.setBorderColorOverride(newColor));
                 setBackground(computeBorderColor());
                 repaint();
             }
@@ -234,8 +247,10 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
         if (track.getBorderHeightOverride() != null || track.getBorderColorOverride() != null) {
             JMenuItem unsetItem = new JMenuItem("Unset Border Height/Color");
             unsetItem.addActionListener(evt -> {
-                track.setBorderHeightOverride(null);
-                track.setBorderColorOverride(null);
+                IGV.getInstance().runUndoableTrackChange("Unset Track Border", List.of(track), () -> {
+                    track.setBorderHeightOverride(null);
+                    track.setBorderColorOverride(null);
+                });
                 setBackground(computeBorderColor());
                 revalidate();
                 repaint();
@@ -251,10 +266,13 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
         JMenuItem unsetAllItem = new JMenuItem("Unset All Borders");
         unsetAllItem.setToolTipText("Clear the border height/color override on every track, in case a track's own override was set to 0 and its divider is no longer clickable to fix directly.");
         unsetAllItem.addActionListener(evt -> {
-            for (Track t : IGV.getInstance().getAllTracks()) {
-                t.setBorderHeightOverride(null);
-                t.setBorderColorOverride(null);
-            }
+            List<Track> allTracks = IGV.getInstance().getAllTracks();
+            IGV.getInstance().runUndoableTrackChange("Unset All Track Borders", allTracks, () -> {
+                for (Track t : allTracks) {
+                    t.setBorderHeightOverride(null);
+                    t.setBorderColorOverride(null);
+                }
+            });
             setBackground(computeBorderColor());
             IGV.getInstance().revalidateTrackPanels();
             IGV.getInstance().repaint();
@@ -339,8 +357,10 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
                 orderedPanes.add(0, droppedSp);
             }
 
-            mainPanel.reorderPanels(orderedPanes);
-            mainPanel.updateMovedTrackOrder(droppedPanel);
+            IGV.getInstance().runUndoableTrackStructureChange("Reorder Tracks", List.of(), () -> {
+                mainPanel.reorderPanels(orderedPanes);
+                mainPanel.updateMovedTrackOrder(droppedPanel);
+            });
             dtde.dropComplete(true);
 
         } catch (Exception ex) {

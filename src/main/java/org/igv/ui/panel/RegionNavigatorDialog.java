@@ -239,7 +239,7 @@ public class RegionNavigatorDialog extends org.igv.ui.IGVDialog implements Obser
             showInfo("Select a chromosome before creating a region.");
         } else {
             Range range = FrameManager.getDefaultFrame().getCurrentRange();
-            IGV.getInstance().addRegionOfInterest(
+            IGV.getInstance().addRegionOfInterestUndoable(
                     new RegionOfInterest(range.getChr(), range.getStart(), range.getEnd(), ""));
         }
     }
@@ -250,8 +250,7 @@ public class RegionNavigatorDialog extends org.igv.ui.IGVDialog implements Obser
             showInfo("No regions are selected.");
             return;
         }
-        IGV.getInstance().getSession().removeRegionsOfInterest(selected);
-        IGV.getInstance().repaint();
+        IGV.getInstance().removeRegionsOfInterestUndoable(selected);
     }
 
     private List<RegionOfInterest> selectedRegions() {

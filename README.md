@@ -49,6 +49,13 @@ For the original, unmodified IGV project, visit
   members, and avoid renderer controls that cannot affect merged rendering.
 - **Numbered track groups:** define, extend, and recall groups 1-9 with keyboard
   shortcuts or the group-tab controls below the track area.
+- **Undo and redo:** recover the 20 most recent application edits from the Edit
+  menu or standard keyboard shortcuts. This covers loading/removing tracks;
+  data ranges, autoscaling, colors, height, renderer and window function;
+  pairing and paired Y-axis flips; track reordering; Average/Restore and
+  Overlay/Separate; ROI additions/deletions; and accepted Regional Settings.
+  Track objects are retained only while needed by the bounded history, and
+  session or genome changes start a fresh, non-undoable baseline.
 - **Average with error bars:** combine selected tracks into a synthetic mean
   track with SEM, SD, or no error bars; configure missing-value handling,
   windowing, rendering, color, cap style, and restore the original tracks.
@@ -72,9 +79,9 @@ For the original, unmodified IGV project, visit
   export (1500 bins by default).
 - Fixed JSON session restoration for local merged/average tracks, pair-group
   columns, group tabs, track order, restored data ranges, and stale pair links.
-- Fixed missing-value statistics and pixel alignment in average/error-bar
-  rendering, and kept paired top/bottom averages adjacent at the original
-  selected-track position.
+- Fixed missing-value statistics, pixel alignment, and SVG mid-line clipping in
+  average/error-bar rendering, and kept paired top/bottom averages adjacent at
+  the original selected-track position.
 - Fixed genome-switch races, added a stoppable genome-loading dialog that stays
   visible through default RefSeq loading, cached remote RefSeq annotations for
   later offline use, and kept progressively loaded tracks in file-load order

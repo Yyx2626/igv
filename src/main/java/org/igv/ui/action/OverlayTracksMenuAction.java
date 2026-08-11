@@ -6,6 +6,7 @@ import org.igv.track.Track;
 import org.igv.ui.AttributeSelectionDialog;
 import org.igv.ui.IGV;
 import org.igv.ui.panel.TrackPanel;
+import org.igv.ui.undo.TrackStructureEdit;
 import org.igv.ui.util.UIUtilities;
 
 import javax.swing.JOptionPane;
@@ -70,6 +71,8 @@ public class OverlayTracksMenuAction extends MenuAction {
     public static MergedTracks merge(List<DataTrack> dataTrackList, String name,
                                      boolean interactive) {
         if(dataTrackList.size() < 2) return null;
+        IGV igv = IGV.getInstance();
+        TrackStructureEdit.Snapshot before = igv.captureTrackStructure(dataTrackList);
         RegionalTrackSettingsTransfer.PreparationResult preparation =
                 RegionalTrackSettingsTransfer.prepareCombination("overlay",
                         List.of(new RegionalTrackSettingsTransfer.InputGroup(
@@ -81,8 +84,7 @@ public class OverlayTracksMenuAction extends MenuAction {
         RegionalTrackSettingsTransfer.TransferResult transfer =
                 RegionalTrackSettingsTransfer.inheritMatchingSettings(
                         dataTrackList, mergedTracks, false);
-        IGV.getInstance().removeTracks(dataTrackList);
-        IGV.getInstance().addTracks(List.of(mergedTracks));
+        igv.replaceTracksPreserving(dataTrackList, List.of(mergedTracks));
         if (preparation.resetConflicts() || transfer.changed()) {
             RegionalTrackSettingsTransfer.publishChanges();
         }
@@ -96,6 +98,7 @@ public class OverlayTracksMenuAction extends MenuAction {
                         "Review Regional Settings", JOptionPane.INFORMATION_MESSAGE);
             }
         }
+        igv.recordUndoableTrackStructureChange("Create Overlay", before, List.of(mergedTracks));
         return mergedTracks;
     }
 
@@ -104,6 +107,8 @@ public class OverlayTracksMenuAction extends MenuAction {
     }
 
     public static void unmerge(Collection<Track> tracks, boolean interactive) {
+        IGV igv = IGV.getInstance();
+        TrackStructureEdit.Snapshot before = igv.captureTrackStructure(tracks);
         boolean regionalSettingsChanged = false;
         Set<org.igv.feature.RegionOfInterest> removedPairModes = new LinkedHashSet<>();
         for (Track t : tracks) {
@@ -120,12 +125,13 @@ public class OverlayTracksMenuAction extends MenuAction {
                                 mergedTracks, mergedTracks.getMemberTracks());
                 regionalSettingsChanged |= transfer.changed();
                 removedPairModes.addAll(transfer.pairModesRemoved());
-                IGV.getInstance().deleteTracks(List.of(mergedTracks));
-                IGV.getInstance().addTracks(new ArrayList<>(mergedTracks.getMemberTracks()));
+                igv.replaceTracksPreserving(List.of(mergedTracks),
+                        new ArrayList<>(mergedTracks.getMemberTracks()));
             }
         }
         if (regionalSettingsChanged) RegionalTrackSettingsTransfer.publishChanges();
-        IGV.getInstance().repaint();
+        igv.repaint();
+        igv.recordUndoableTrackStructureChange("Separate Overlay", before, tracks);
         if (interactive) {
             RegionalTrackSettingsTransfer.showPairModeWarning(
                     "separating overlay tracks", removedPairModes);

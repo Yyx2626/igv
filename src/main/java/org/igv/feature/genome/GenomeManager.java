@@ -295,6 +295,7 @@ public class GenomeManager {
 
         // hasInstance() check to filters unit test
         if (IGV.hasInstance()) {
+            IGV.getInstance().clearUndoHistory();
             // The genome model is now authoritative. Reflect that in the combo box before
             // loading sequence/annotation tracks so progressive track loading never appears
             // under the previous genome's label.

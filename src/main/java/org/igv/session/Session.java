@@ -294,13 +294,16 @@ public class Session implements IGVEventObserver {
 
 
     public void addRegionOfInterest(RegionOfInterest roi) {
-        String chr = roi.getChr();
-        Collection<RegionOfInterest> roiList = regionsOfInterest.get(chr);
-        if (roiList == null) {
-            roiList = new ArrayList<RegionOfInterest>();
-            regionsOfInterest.put(chr, roiList);
+        addRegionsOfInterest(List.of(roi));
+    }
+
+    /** Add multiple ROIs with one revision increment and observer notification. */
+    public void addRegionsOfInterest(Collection<RegionOfInterest> regions) {
+        if (regions == null || regions.isEmpty()) return;
+        for (RegionOfInterest roi : regions) {
+            if (roi == null) continue;
+            regionsOfInterest.computeIfAbsent(roi.getChr(), ignored -> new ArrayList<>()).add(roi);
         }
-        roiList.add(roi);
 
         //notify all observers that regions have changed.
         regionsOfInterestRevision++;

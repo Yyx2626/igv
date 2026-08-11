@@ -81,6 +81,8 @@ public class IGVMenuBar extends JMenuBar {
     private JMenuItem reloadSessionItem;
     private JMenuItem recentFilesMenu;
     private JMenuItem editAnnotationsItem;
+    private JMenuItem undoItem;
+    private JMenuItem redoItem;
     private JMenu fileMenu;
     private JMenu hubsMenu;
 
@@ -128,6 +130,7 @@ public class IGVMenuBar extends JMenuBar {
 
         fileMenu = new JMenu("File");
         menus.add(fileMenu);
+        menus.add(createEditMenu());
         menus.add(createGenomesMenu());
         hubsMenu = new JMenu("Track Hubs");
         menus.add(hubsMenu);
@@ -163,6 +166,39 @@ public class IGVMenuBar extends JMenuBar {
         menus.add(createHelpMenu());
 
         return menus;
+    }
+
+    private JMenu createEditMenu() {
+        JMenu menu = new JMenu("Edit");
+        int shortcutMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+
+        undoItem = new JMenuItem("Undo");
+        undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, shortcutMask));
+        undoItem.addActionListener(event -> igv.getUndoManager().undo());
+        menu.add(undoItem);
+
+        redoItem = new JMenuItem("Redo");
+        redoItem.setAccelerator(KeyStroke.getKeyStroke(
+                KeyEvent.VK_Z, shortcutMask | KeyEvent.SHIFT_DOWN_MASK));
+        redoItem.addActionListener(event -> igv.getUndoManager().redo());
+        menu.add(redoItem);
+
+        igv.getUndoManager().addChangeListener(event -> updateUndoRedoItems());
+        updateUndoRedoItems();
+        return menu;
+    }
+
+    private void updateUndoRedoItems() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::updateUndoRedoItems);
+            return;
+        }
+        undoItem.setEnabled(igv.getUndoManager().canUndo());
+        redoItem.setEnabled(igv.getUndoManager().canRedo());
+        undoItem.setText(igv.getUndoManager().canUndo()
+                ? igv.getUndoManager().getUndoPresentationName() : "Undo");
+        redoItem.setText(igv.getUndoManager().canRedo()
+                ? igv.getUndoManager().getRedoPresentationName() : "Redo");
     }
 
     public void updateAWSMenu() {

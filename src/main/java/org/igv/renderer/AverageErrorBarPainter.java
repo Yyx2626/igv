@@ -141,13 +141,20 @@ final class AverageErrorBarPainter {
      * from the mean out to mean+err (or mean-err, if the mean bar itself extends below
      * the baseline) - so it sits flush against the mean bar's own tip instead of
      * overlapping/hiding the portion of the mean bar between mean-err and mean.
-     * {@code DOUBLE} cap style ("I"-beam) keeps the traditional symmetric mean +/- err
-     * span on both sides.
+     * {@code DOUBLE} cap style ("I"-beam) keeps the symmetric mean +/- err span except
+     * where that span would cross the plot baseline; the inward end is clipped there.
      */
-    private static int[] errorPixelSpan(DoubleUnaryOperator toPixel, float baseline,
-                                         float mean, float err, ErrorBarStyle style) {
-        int yLo = (int) toPixel.applyAsDouble(mean - err);
-        int yHi = (int) toPixel.applyAsDouble(mean + err);
+    static int[] errorPixelSpan(DoubleUnaryOperator toPixel, float baseline,
+                                float mean, float err, ErrorBarStyle style) {
+        // Keep the uncertainty marker on the same side of the baseline as its mean.
+        // In particular, SVG exposes even a small symmetric mean +/- error extension
+        // beyond the gray midline that raster output can visually hide beneath the line.
+        float low = mean - err;
+        float high = mean + err;
+        if (mean >= baseline) low = Math.max(low, baseline);
+        else high = Math.min(high, baseline);
+        int yLo = (int) toPixel.applyAsDouble(low);
+        int yHi = (int) toPixel.applyAsDouble(high);
         if (style.getCapStyle() == ErrorBarStyle.CapStyle.SINGLE) {
             int yMean = (int) toPixel.applyAsDouble(mean);
             if (mean >= baseline) {

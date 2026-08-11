@@ -323,12 +323,22 @@ public abstract class AbstractTrack implements Track {
     }
 
     @Override
+    public Color getColorOverride() {
+        return color;
+    }
+
+    @Override
     public void setAltColor(Color color) {
         altColor = color;
     }
 
     public Color getAltColor() {
         return altColor == null ? getColor() : altColor;
+    }
+
+    @Override
+    public Color getAltColorOverride() {
+        return altColor;
     }
 
     public void setDefaultColor(Color color) {
@@ -1001,6 +1011,11 @@ public abstract class AbstractTrack implements Track {
     // Start of Roche-Tessella modification
     public boolean getAutoScale() {
         return this.autoScale;
+    }
+
+    @Override
+    public String getAutoscaleGroup() {
+        return autoscaleGroup;
     }
     // End of Roche-Tessella modification
 

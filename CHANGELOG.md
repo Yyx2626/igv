@@ -66,9 +66,24 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
   preventing a stale region bar from remaining until the next mouse hover.
 - Preserved a common manually configured Data Range and matching positive/negative
   track colors when creating each Average With Error Bar output group. Click and
-  feature-selection coordinates inside
-  inverted regions now use the same fixed ROI reflection axis as rendering,
-  including partially visible and nested inverted regions.
+  feature-selection coordinates inside inverted regions now use the same fixed
+  ROI reflection axis as rendering, including partially visible and nested
+  inverted regions.
+- Added a 20-step application Undo/Redo history with an Edit menu and standard
+  Ctrl/Cmd shortcuts. User-deleted tracks retain their live panel state and
+  original position until restored or evicted from history; ROI additions,
+  deletions, and accepted Regional Settings dialogs are also single undoable
+  edits. Detached tracks are unloaded when their history entry expires.
+- Extended Undo/Redo to interactive track loading; data range, autoscale,
+  positive/negative/background/border color, height, renderer, and window
+  function changes; Pair/Unpair and paired Y-axis flips; drag or dialog track
+  reordering; Average creation/Restore; and Overlay creation/Separate. Composite
+  transactions retain exact pane objects, member state, pairing, and regional
+  rules. Session and genome initialization clear the bounded history because
+  they establish a new non-undoable baseline.
+- Clipped Average With Error Bar uncertainty markers to the mean's side of the
+  data-range midline, preventing ochre error bars from protruding across the gray
+  line in SVG output.
 
 ## August 10, 2026
 

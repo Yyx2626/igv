@@ -9,6 +9,7 @@ import org.igv.track.DataTrack;
 import org.igv.track.Track;
 import org.igv.track.TrackPairing;
 import org.igv.ui.IGV;
+import org.igv.ui.undo.RegionalSettingsEdit;
 import org.igv.ui.PairedDataRangeDialog;
 
 import javax.swing.*;
@@ -475,6 +476,12 @@ public final class RegionalSettingsDialog extends JDialog {
         accepted = true;
         region.setBackgroundColor(workingBarColor);
         publishRule(workingRule);
+        RegionDisplayRule acceptedRule = region.getDisplayRule();
+        if (RegionalSettingsEdit.differs(originalRule, originalBarColor,
+                acceptedRule, workingBarColor)) {
+            IGV.getInstance().getUndoManager().addEdit(new RegionalSettingsEdit(
+                    region, originalRule, originalBarColor, acceptedRule, workingBarColor));
+        }
         dispose();
     }
 

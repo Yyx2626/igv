@@ -263,6 +263,11 @@ public interface Track {
 
     Color getColor();
 
+    /** Explicit positive/foreground color, or null when the track inherits its default. */
+    default Color getColorOverride() {
+        return getColor();
+    }
+
     default Color getDefaultColor() {
         return Globals.isDarkMode() ? Color.cyan : Color.blue.brighter();
     }
@@ -270,6 +275,11 @@ public interface Track {
     void setColor(Color color);
 
     Color getAltColor();
+
+    /** Explicit negative/alternate color, or null when the track inherits its default. */
+    default Color getAltColorOverride() {
+        return getAltColor();
+    }
 
     void setAltColor(Color color);
 
@@ -383,6 +393,11 @@ public interface Track {
     void removeFromTrackGroup(int groupNumber);
 
     boolean getAutoScale();
+
+    /** Explicit group-autoscale identifier without falling back to sample metadata. */
+    default String getAutoscaleGroup() {
+        return getAttributeValue(AttributeManager.GROUP_AUTOSCALE);
+    }
 
     void setAutoScale(boolean autoScale);
 

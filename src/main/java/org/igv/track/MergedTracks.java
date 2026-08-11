@@ -299,23 +299,8 @@ public class MergedTracks extends DataTrack implements ScalableTrack {
     /** Kept separate so both selected and unselected popup paths expose this action. */
     public JMenuItem getSeparateTracksItem() {
         JMenuItem separateItem = new JMenuItem("Separate Tracks");
-        separateItem.addActionListener(e -> {
-            long order = getOrder();
-            setTrackAlphas(1.0);
-            // Set the order of member tracks to match the merged track's order
-            for (Track memberTrack : getMemberTracks()) {
-                memberTrack.setOrder(order);
-            }
-            RegionalTrackSettingsTransfer.TransferResult regionalTransfer =
-                    RegionalTrackSettingsTransfer.inheritCompositeSettings(
-                            this, getMemberTracks());
-            IGV.getInstance().deleteTracks(List.of(this));
-            IGV.getInstance().addTracks(new ArrayList<>(getMemberTracks()));
-            if (regionalTransfer.changed()) RegionalTrackSettingsTransfer.publishChanges();
-            IGV.getInstance().repaint();
-            RegionalTrackSettingsTransfer.showPairModeWarning(
-                    "separating the overlay", regionalTransfer.pairModesRemoved());
-        });
+        separateItem.addActionListener(e ->
+                OverlayTracksMenuAction.unmerge(List.of(this), true));
         return separateItem;
     }
 
@@ -408,8 +393,13 @@ public class MergedTracks extends DataTrack implements ScalableTrack {
     public JMenuItem getAdjustTransparencyItem() {
         JMenuItem alphaItem = new JMenuItem("Adjust Overlay Transparency...");
         alphaItem.addActionListener(e -> {
-            JDialog alphaDialog = getAlphaDialog();
-            alphaDialog.setVisible(true);
+            List<Track> affected = new ArrayList<>();
+            affected.add(this);
+            affected.addAll(memberTracks);
+            IGV.getInstance().runUndoableTrackChange("Adjust Overlay Transparency", affected, () -> {
+                JDialog alphaDialog = getAlphaDialog();
+                alphaDialog.setVisible(true);
+            });
         });
         return alphaItem;
     }

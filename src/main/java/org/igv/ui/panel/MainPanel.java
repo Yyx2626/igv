@@ -637,6 +637,85 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
         return -1;
     }
 
+    /** A live track pane temporarily removed from the layout for an undoable deletion. */
+    public record DetachedTrackPanel(Track track, TrackPanelScrollPane pane, int index) {
+    }
+
+    /**
+     * Remove visible track panes without unloading tracks or discarding their Swing state.
+     * The returned placements can be restored by {@link #restoreDetachedTrackPanels(List)}.
+     */
+    public synchronized List<DetachedTrackPanel> detachTrackPanels(
+            Collection<? extends Track> tracks) {
+        if (tracks == null || tracks.isEmpty()) return List.of();
+        List<DetachedTrackPanel> detached = new ArrayList<>();
+        UIUtilities.invokeAndWaitOnEventThread(() -> {
+            Set<Track> targets = Collections.newSetFromMap(new IdentityHashMap<>());
+            targets.addAll(tracks);
+            List<TrackPanelScrollPane> panes = currentTrackPanes();
+            List<TrackPanelScrollPane> retained = new ArrayList<>();
+            for (int i = 0; i < panes.size(); i++) {
+                TrackPanelScrollPane pane = panes.get(i);
+                Track track = pane.getTrackPanel().getTrack();
+                if (track != null && targets.contains(track)) {
+                    detached.add(new DetachedTrackPanel(track, pane, i));
+                } else {
+                    retained.add(pane);
+                }
+            }
+            if (!detached.isEmpty()) setTrackPanes(retained);
+        });
+        return List.copyOf(detached);
+    }
+
+    /** Restore panes detached by an undoable deletion at their former visual positions. */
+    public synchronized void restoreDetachedTrackPanels(List<DetachedTrackPanel> placements) {
+        if (placements == null || placements.isEmpty()) return;
+        UIUtilities.invokeAndWaitOnEventThread(() -> {
+            List<TrackPanelScrollPane> panes = currentTrackPanes();
+            Set<TrackPanelScrollPane> present = Collections.newSetFromMap(new IdentityHashMap<>());
+            present.addAll(panes);
+            List<DetachedTrackPanel> ordered = placements.stream()
+                    .sorted(Comparator.comparingInt(DetachedTrackPanel::index)).toList();
+            for (DetachedTrackPanel placement : ordered) {
+                if (present.add(placement.pane())) {
+                    int index = Math.max(0, Math.min(placement.index(), panes.size()));
+                    panes.add(index, placement.pane());
+                }
+            }
+            setTrackPanes(panes);
+        });
+    }
+
+    private List<TrackPanelScrollPane> currentTrackPanes() {
+        List<TrackPanelScrollPane> panes = new ArrayList<>();
+        for (Component component : trackPanelContainer.getComponents()) {
+            if (component instanceof TrackPanelScrollPane pane) panes.add(pane);
+        }
+        return panes;
+    }
+
+    /** Immutable snapshot of the current live track-pane order for structural undo. */
+    public synchronized List<TrackPanelScrollPane> snapshotTrackPanes() {
+        final List<TrackPanelScrollPane>[] result = new List[]{List.of()};
+        UIUtilities.invokeAndWaitOnEventThread(() -> result[0] = List.copyOf(currentTrackPanes()));
+        return result[0];
+    }
+
+    /** Restore an exact live track-pane layout captured by {@link #snapshotTrackPanes()}. */
+    public synchronized void restoreTrackPanes(List<TrackPanelScrollPane> panes) {
+        if (panes == null) return;
+        UIUtilities.invokeAndWaitOnEventThread(() -> setTrackPanes(new ArrayList<>(panes)));
+    }
+
+    private void setTrackPanes(List<TrackPanelScrollPane> panes) {
+        trackPanelContainer.removeAll();
+        for (TrackPanelScrollPane pane : panes) trackPanelContainer.add(pane);
+        rebuildDividers();
+        trackPanelContainer.revalidate();
+        trackPanelContainer.repaint();
+    }
+
     public void clearTrackPanels() {
         trackPanelContainer.removeAll();
         rebuildDividers();

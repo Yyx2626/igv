@@ -7,6 +7,7 @@ import org.igv.track.Track;
 import org.igv.track.TrackPairing;
 import org.igv.track.WindowFunction;
 import org.igv.ui.IGV;
+import org.igv.ui.undo.TrackStructureEdit;
 
 import javax.swing.JOptionPane;
 import java.util.ArrayList;
@@ -50,6 +51,8 @@ public class AverageErrorBarMenuAction {
         if (!bottomGroup.isEmpty()) {
             inputGroups.add(new RegionalTrackSettingsTransfer.InputGroup("Bottom", bottomGroup));
         }
+        IGV igv = IGV.getInstance();
+        TrackStructureEdit.Snapshot before = igv.captureTrackStructure(allDataTracks);
         RegionalTrackSettingsTransfer.PreparationResult preparation =
                 RegionalTrackSettingsTransfer.prepareCombination("average", inputGroups, true);
         if (!preparation.proceed()) return;
@@ -80,12 +83,13 @@ public class AverageErrorBarMenuAction {
         // Replace only the DataTracks that actually contributed to the average. The panel
         // operation uses current visual positions rather than stale/tied Track.order values,
         // so TOP is inserted first, BOTTOM immediately below it, at the first input's slot.
-        IGV.getInstance().replaceTracks(new ArrayList<>(allDataTracks), newTracks);
+        igv.replaceTracksPreserving(new ArrayList<>(allDataTracks), newTracks);
         if (topAvg != null && bottomAvg != null) {
             TrackPairing.pair(topAvg, bottomAvg);
         }
         if (regionalSettingsChanged) RegionalTrackSettingsTransfer.publishChanges();
-        IGV.getInstance().repaint();
+        igv.repaint();
+        igv.recordUndoableTrackStructureChange("Create Average Track", before, newTracks);
         if (preparation.resetConflicts()) {
             JOptionPane.showMessageDialog(IGV.getInstance().getMainFrame(),
                     "The conflicting member-track regional settings were reset and the average track was created.\n"

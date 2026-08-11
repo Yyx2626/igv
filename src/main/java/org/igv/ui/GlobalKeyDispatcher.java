@@ -125,6 +125,31 @@ public class GlobalKeyDispatcher implements KeyEventDispatcher {
         final IGV igv = IGV.getInstance();
         final IGVPreferences prefMgr = PreferencesManager.getPreferences();
 
+        // Application edits. Text components are excluded in dispatchKeyEvent so their
+        // native text undo/redo remains independent from IGV state changes.
+        final Action undoAction = new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                igv.getUndoManager().undo();
+            }
+        };
+        final Action redoAction = new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                igv.getUndoManager().redo();
+            }
+        };
+        int menuShortcutMask = Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx();
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_Z, menuShortcutMask, false), "undo");
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_Z, KeyEvent.CTRL_DOWN_MASK, false), "undo");
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_Z,
+                menuShortcutMask | KeyEvent.SHIFT_DOWN_MASK, false), "redo");
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_Z,
+                KeyEvent.CTRL_DOWN_MASK | KeyEvent.SHIFT_DOWN_MASK, false), "redo");
+        inputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_Y, KeyEvent.CTRL_DOWN_MASK, false), "redo");
+        actionMap.put("undo", undoAction);
+        actionMap.put("redo", redoAction);
+
         // Next feature
         final KeyStroke nextKey0 = KeyStroke.getKeyStroke(KeyEvent.VK_F, 0, false);
         final KeyStroke nextKey = KeyStroke.getKeyStroke(KeyEvent.VK_F, KeyEvent.CTRL_MASK, false);
@@ -186,7 +211,7 @@ public class GlobalKeyDispatcher implements KeyEventDispatcher {
                                 currentRange.getStart(),
                                 currentRange.getEnd(),
                                 null);
-                igv.addRegionOfInterest(regionOfInterest);
+                igv.addRegionOfInterestUndoable(regionOfInterest);
             }
         });
         inputMap.put(regionKey, "region");
@@ -207,7 +232,7 @@ public class GlobalKeyDispatcher implements KeyEventDispatcher {
                                 center,
                                 center + 1,
                                 null);
-                igv.addRegionOfInterest(regionOfInterest);
+                igv.addRegionOfInterestUndoable(regionOfInterest);
             }
         });
         inputMap.put(regionCenterKey, "regionCenter");
@@ -277,8 +302,7 @@ public class GlobalKeyDispatcher implements KeyEventDispatcher {
             public void actionPerformed(ActionEvent e) {
                 Collection<Track> selectedTracks = IGV.getSelectedTracks();
                 if (!selectedTracks.isEmpty()) {
-                    igv.deleteTracks(selectedTracks);
-                    igv.repaint();
+                    igv.deleteTracksUndoable(selectedTracks);
                 }
             }
         };
