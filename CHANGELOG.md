@@ -5,6 +5,13 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
 
 ## August 11, 2026
 
+- Added **View > Set IGV Window Size** for applying exact pixel dimensions to
+  the current window when reproducing figure layouts. Save Screenshot displays
+  the current dimensions and provides the same Set action; startup still follows
+  IGV's normal saved-window behavior, and dimensions are not added to TSV output.
+- Made Save Screenshot remember its last accepted path and options for the
+  current IGV run, and clarified that the General bin setting controls both
+  numeric display and TSV export.
 - Completed and stabilized Regional Settings after its initial preview,
   including regional rendering, navigation, nested coordinate transforms,
   sequence direction, annotation labels, track-setting transfer, screenshot/TSV

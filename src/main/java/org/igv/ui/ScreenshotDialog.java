@@ -12,6 +12,8 @@ import java.io.File;
 /** Collects publication-oriented screenshot and optional data-export settings. */
 public final class ScreenshotDialog {
 
+    private static Options lastAcceptedOptions;
+
     private ScreenshotDialog() {
     }
 
@@ -34,7 +36,10 @@ public final class ScreenshotDialog {
 
     public static Options show(Frame owner) {
         File lastDirectory = PreferencesManager.getPreferences().getLastSnapshotDirectory();
-        File defaultPrefix = new File(lastDirectory == null ? new File(".") : lastDirectory, "igv_snapshot");
+        Options previous = lastAcceptedOptions;
+        File defaultPrefix = previous == null
+                ? new File(lastDirectory == null ? new File(".") : lastDirectory, "igv_snapshot")
+                : previous.outputPrefix();
 
         JTextField prefixField = new JTextField(defaultPrefix.getAbsolutePath(), 32);
         JButton browseButton = new JButton("Browse...");
@@ -49,14 +54,37 @@ public final class ScreenshotDialog {
                 return this;
             }
         });
-        JCheckBox includeCoordinates = new JCheckBox("Include top genomic coordinates", true);
-        JCheckBox includeTrackNames = new JCheckBox("Include track names", true);
-        JCheckBox outputData = new JCheckBox("Output underlying data TSV", false);
+        if (previous != null) formatBox.setSelectedItem(previous.format());
+        JCheckBox includeCoordinates = new JCheckBox("Include top genomic coordinates",
+                previous == null || previous.includeCoordinates());
+        JCheckBox includeTrackNames = new JCheckBox("Include track names",
+                previous == null || previous.includeTrackNames());
+        JCheckBox outputData = new JCheckBox("Output underlying data TSV",
+                previous != null && previous.outputDataTsv());
         JCheckBox addCoordinateRange = new JCheckBox(
-                "Add genomic coordinate range to output filename", true);
+                "Add genomic coordinate range to output filename",
+                previous == null || previous.addCoordinateRange());
         int bins = Math.max(1, PreferencesManager.getPreferences().getAsInt(Constants.SCREENSHOT_DATA_BINS));
-        JLabel binsLabel = new JLabel("TSV uses " + bins + " equal bins (change in Preferences > General)");
-        binsLabel.setForeground(UIManager.getColor("Label.disabledForeground"));
+        JLabel binsLabel = new JLabel("Display and export using " + bins +
+                " equal genomic bins (change in Preferences > General)");
+        binsLabel.setForeground(Color.BLACK);
+        JLabel windowSizeLabel = new JLabel("Current IGV window size: " + owner.getWidth() + " × " +
+                owner.getHeight() + " pixels");
+        windowSizeLabel.setForeground(Color.BLACK);
+        JButton setWindowSize = new JButton("Set...");
+        setWindowSize.addActionListener(e -> {
+            Dimension requestedSize = WindowSizeDialog.show(owner);
+            if (requestedSize != null && IGV.hasInstance()) {
+                IGV.getInstance().setApplicationWindowSize(requestedSize);
+                windowSizeLabel.setText("Current IGV window size: " + owner.getWidth() + " × " +
+                        owner.getHeight() + " pixels");
+            }
+        });
+        Box windowSizePanel = Box.createHorizontalBox();
+        windowSizePanel.add(windowSizeLabel);
+        windowSizePanel.add(Box.createHorizontalStrut(8));
+        windowSizePanel.add(setWindowSize);
+        windowSizePanel.add(Box.createHorizontalGlue());
 
         browseButton.addActionListener(e -> {
             File current = new File(prefixField.getText().trim());
@@ -90,6 +118,11 @@ public final class ScreenshotDialog {
         c.gridx = 1;
         panel.add(formatBox, c);
         c.gridy++;
+        c.gridx = 0;
+        c.weightx = 0;
+        panel.add(new JLabel("Output options"), c);
+        c.gridx = 1;
+        c.weightx = 1;
         panel.add(addCoordinateRange, c);
         c.gridy++;
         panel.add(includeCoordinates, c);
@@ -98,7 +131,13 @@ public final class ScreenshotDialog {
         c.gridy++;
         panel.add(outputData, c);
         c.gridy++;
+        c.gridx = 0;
+        c.gridwidth = 2;
+        panel.add(Box.createVerticalStrut(8), c);
+        c.gridy++;
         panel.add(binsLabel, c);
+        c.gridy++;
+        panel.add(windowSizePanel, c);
 
         while (true) {
             int result = JOptionPane.showConfirmDialog(owner, panel, "Save Screenshot",
@@ -110,9 +149,11 @@ public final class ScreenshotDialog {
                 continue;
             }
             File prefixFile = stripKnownExtension(new File(prefix));
-            return new Options(prefixFile, (ImageFileTypes.Type) formatBox.getSelectedItem(),
+            Options options = new Options(prefixFile, (ImageFileTypes.Type) formatBox.getSelectedItem(),
                     includeCoordinates.isSelected(), includeTrackNames.isSelected(), outputData.isSelected(),
                     addCoordinateRange.isSelected());
+            lastAcceptedOptions = options;
+            return options;
         }
     }
 

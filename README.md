@@ -45,6 +45,9 @@ For the original, unmodified IGV project, visit
 - **Publication screenshot and data export:** export PNG or SVG figures with
   optional genomic coordinates and track names, plus matching binned TSV data
   that preserves merged, average, and base-resolution sequence information.
+  Set the numeric-display and TSV bin count in Preferences > General (1500 by
+  default), reproduce viewport dimensions with View > Set IGV Window Size, and
+  reuse the last accepted screenshot path and options during the current run.
 - **Undo and redo:** recover the 20 most recent track, pairing, composite-track,
   ROI, and Regional Settings edits from the Edit menu or standard shortcuts;
   session or genome changes start a fresh history.
@@ -59,10 +62,11 @@ For the original, unmodified IGV project, visit
   track background gaps, and error bars being clipped by autoscaling.
 - Fixed selection behavior for Shift-click, right-click, checkboxes, and mixed
   multi-track context menus.
-- Added configurable equal-width binning for numeric display and screenshot TSV
-  export (1500 bins by default).
 - Fixed JSON session restoration for local merged/average tracks, pair-group
   columns, group tabs, track order, restored data ranges, and stale pair links.
+- Improved the overlay workflow with consistent checked/unchecked context
+  menus, adjustable and session-persistent transparency, reversible separation,
+  and controls limited to settings that affect merged rendering.
 - Fixed missing-value statistics, pixel alignment, and SVG mid-line clipping in
   average/error-bar rendering, and kept paired top/bottom averages adjacent at
   the original selected-track position.
@@ -70,10 +74,13 @@ For the original, unmodified IGV project, visit
   visible through default RefSeq loading, cached remote RefSeq annotations for
   later offline use, and kept progressively loaded tracks in file-load order
   without moving RefSeq.
-- Made main-window construction and local FASTA loading independent of hosted
-  genome, OAuth, and track-hub network discovery; restored startup windows to a
-  usable on-screen size and treated Stop as normal cancellation.
-- Fixed broken `igvtools` classpath launchers and bundled-JDK selection scripts.
+- Fixed offline startup errors that could block the main window from opening by
+  removing hosted-genome, OAuth, and track-hub network discovery from window
+  construction; local FASTA loading now stays offline, startup windows restore
+  to a usable on-screen size, and Stop is treated as normal cancellation.
+- Added portable macOS and Windows launchers that select bundled JDK 21 by
+  operating system and CPU architecture, and fixed the `igvtools` classpath
+  launchers.
 - Made HTTP connect/read timeouts configurable to avoid multi-minute stalls when
   a remote annotation host is unavailable.
 

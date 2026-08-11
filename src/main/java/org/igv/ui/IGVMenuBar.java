@@ -478,6 +478,19 @@ public class IGVMenuBar extends JMenuBar {
         menuAction.setToolTipText(PREFERENCE_TOOLTIP);
         menuItems.add(MenuAndToolbarUtils.createMenuItem(menuAction));
 
+        menuItems.add(new JSeparator());
+        menuAction = new MenuAction("Set IGV Window Size...", null, KeyEvent.VK_W) {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                Dimension size = WindowSizeDialog.show(igv.getMainFrame());
+                if (size != null) {
+                    igv.setApplicationWindowSize(size);
+                }
+            }
+        };
+        menuAction.setToolTipText("Set the current window dimensions for reproducible figure layout");
+        menuItems.add(MenuAndToolbarUtils.createMenuItem(menuAction));
+
         // Show/hide track selection checkboxes
         menuItems.add(new JSeparator());
         JCheckBoxMenuItem selectTracksItem = new JCheckBoxMenuItem("Show Selection Checkboxes");

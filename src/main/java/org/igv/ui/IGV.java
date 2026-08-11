@@ -249,6 +249,11 @@ public class IGV implements IGVEventObserver {
     }
 
     static Rectangle normalizeApplicationBounds(Rectangle savedBounds, Rectangle[] screenBounds) {
+        return normalizeApplicationBounds(savedBounds, screenBounds, null);
+    }
+
+    static Rectangle normalizeApplicationBounds(Rectangle savedBounds, Rectangle[] screenBounds,
+                                                Dimension configuredSize) {
         Rectangle targetScreen = null;
         boolean savedOriginIsVisible = false;
 
@@ -268,10 +273,14 @@ public class IGV implements IGVEventObserver {
                     : new Rectangle(0, 0, 1150, 800);
         }
 
-        int requestedWidth = savedOriginIsVisible
+        int requestedWidth = configuredSize != null
+                ? Math.max(300, configuredSize.width)
+                : savedOriginIsVisible
                 ? Math.max(savedBounds.width, UIConstants.preferredSize.width)
                 : 1150;
-        int requestedHeight = savedOriginIsVisible
+        int requestedHeight = configuredSize != null
+                ? Math.max(300, configuredSize.height)
+                : savedOriginIsVisible
                 ? Math.max(savedBounds.height, UIConstants.preferredSize.height)
                 : 800;
         int width = Math.min(requestedWidth, targetScreen.width);
@@ -285,6 +294,18 @@ public class IGV implements IGVEventObserver {
                 Math.min(requestedY, targetScreen.y + targetScreen.height - height));
 
         return new Rectangle(x, y, width, height);
+    }
+
+    public void setApplicationWindowSize(Dimension requestedSize) {
+        if (requestedSize == null) return;
+        GraphicsDevice[] devices = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices();
+        Rectangle[] screenBounds = Arrays.stream(devices)
+                .map(device -> device.getDefaultConfiguration().getBounds())
+                .toArray(Rectangle[]::new);
+        Rectangle bounds = normalizeApplicationBounds(mainFrame.getBounds(), screenBounds, requestedSize);
+        mainFrame.setBounds(bounds);
+        mainFrame.validate();
+        mainFrame.repaint();
     }
 
     public static List<Track> getSelectedTracks() {
