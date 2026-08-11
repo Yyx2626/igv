@@ -25,7 +25,14 @@ public class TrackRegionOverride {
         }
     }
 
+    public enum PairMode {
+        NONE,
+        SWAP,
+        FLIP
+    }
+
     private boolean reverseX;
+    private PairMode pairMode = PairMode.NONE;
     private YAxisMode yAxisMode = YAxisMode.DEFAULT;
     private Float rangeMinimum;
     private Float rangeBaseline;
@@ -42,6 +49,18 @@ public class TrackRegionOverride {
 
     public void setReverseX(boolean reverseX) {
         this.reverseX = reverseX;
+    }
+
+    public PairMode getPairMode() {
+        return pairMode;
+    }
+
+    public void setPairMode(PairMode pairMode) {
+        this.pairMode = pairMode == null ? PairMode.NONE : pairMode;
+    }
+
+    public boolean exchangesTrackPair() {
+        return pairMode != PairMode.NONE;
     }
 
     public YAxisMode getYAxisMode() {
@@ -119,7 +138,8 @@ public class TrackRegionOverride {
     }
 
     public boolean hasAnyEffect() {
-        return reverseX || yAxisMode != YAxisMode.DEFAULT || positiveColor != null || negativeColor != null
+        return reverseX || pairMode != PairMode.NONE || yAxisMode != YAxisMode.DEFAULT
+                || positiveColor != null || negativeColor != null
                 || backgroundColor != null || foregroundMaskColor != null;
     }
 
@@ -135,10 +155,14 @@ public class TrackRegionOverride {
         TrackRegionOverride effective = new TrackRegionOverride();
         boolean reverseX = false;
         boolean flipY = false;
+        boolean swapTrackPair = false;
+        boolean pairFlipY = false;
         TrackRegionOverride customRange = null;
         for (TrackRegionOverride next : overrides) {
             if (next == null) continue;
             reverseX ^= next.isReverseX();
+            if (next.getPairMode() != PairMode.NONE) swapTrackPair = !swapTrackPair;
+            if (next.getPairMode() == PairMode.FLIP) pairFlipY = !pairFlipY;
             if (next.getYAxisMode() == YAxisMode.FLIP) flipY = !flipY;
             if (next.getYAxisMode() == YAxisMode.CUSTOM) customRange = next;
             if (next.getBackgroundColor() != null) effective.setBackgroundColor(next.getBackgroundColor());
@@ -147,12 +171,16 @@ public class TrackRegionOverride {
             if (next.getNegativeColor() != null) effective.setNegativeColor(next.getNegativeColor());
         }
         effective.setReverseX(reverseX);
-        if (flipY) {
-            effective.setYAxisMode(YAxisMode.FLIP);
-        } else if (customRange != null && customRange.getRangeMinimum() != null
+        boolean effectiveFlipY = flipY ^ pairFlipY;
+        if (customRange != null && customRange.getRangeMinimum() != null
                 && customRange.getRangeBaseline() != null && customRange.getRangeMaximum() != null) {
             effective.setCustomRange(customRange.getRangeMinimum(), customRange.getRangeBaseline(),
                     customRange.getRangeMaximum(), Boolean.TRUE.equals(customRange.getLogScale()));
+        }
+        if (swapTrackPair) {
+            effective.setPairMode(effectiveFlipY ? PairMode.FLIP : PairMode.SWAP);
+        } else if (effectiveFlipY) {
+            effective.setYAxisMode(YAxisMode.FLIP);
         }
         return effective;
     }
@@ -160,6 +188,7 @@ public class TrackRegionOverride {
     public JSONObject toJson() {
         JSONObject json = new JSONObject();
         if (reverseX) json.put("reverseX", true);
+        if (pairMode != PairMode.NONE) json.put("pairMode", pairMode.name());
         if (yAxisMode != YAxisMode.DEFAULT) json.put("yAxisMode", yAxisMode.name());
         if (yAxisMode == YAxisMode.CUSTOM && rangeMinimum != null && rangeBaseline != null && rangeMaximum != null) {
             JSONObject range = new JSONObject();
@@ -179,6 +208,14 @@ public class TrackRegionOverride {
     public static TrackRegionOverride fromJson(JSONObject json) {
         TrackRegionOverride override = new TrackRegionOverride();
         override.reverseX = json.optBoolean("reverseX", false);
+        String pairMode = json.optString("pairMode", "");
+        try {
+            override.pairMode = pairMode.isEmpty()
+                    ? (json.optBoolean("swapTrackPair", false) ? PairMode.FLIP : PairMode.NONE)
+                    : PairMode.valueOf(pairMode);
+        } catch (IllegalArgumentException ignored) {
+            override.pairMode = PairMode.NONE;
+        }
         String yAxisMode = json.optString("yAxisMode", YAxisMode.DEFAULT.name());
         try {
             override.yAxisMode = YAxisMode.valueOf(yAxisMode);

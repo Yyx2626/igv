@@ -3,10 +3,14 @@ package org.igv.track;
 import org.igv.prefs.PreferencesManager;
 import org.igv.feature.TrackRegionOverride;
 import org.igv.renderer.DataRange;
+import org.igv.renderer.FeatureLabelCollector;
 import org.igv.ui.panel.ReferenceFrame;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.geom.AffineTransform;
+import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -34,6 +38,9 @@ public class RenderContext {
     private Double scaleOverride;
     private DisplayBinPlan displayBinPlan;
     private Rectangle labelClipBounds;
+    private AffineTransform labelCoordinateTransform = new AffineTransform();
+    private FeatureLabelCollector featureLabelCollector;
+    private double labelPanelOffsetX;
 
     /**
      * X translation for this context relative to its parent.  This is used in expanded insertion "multi-frame* view
@@ -79,6 +86,9 @@ public class RenderContext {
         this.scaleOverride = context.scaleOverride;
         this.displayBinPlan = context.displayBinPlan;
         this.labelClipBounds = context.labelClipBounds == null ? null : new Rectangle(context.labelClipBounds);
+        this.labelCoordinateTransform = new AffineTransform(context.labelCoordinateTransform);
+        this.featureLabelCollector = context.featureLabelCollector;
+        this.labelPanelOffsetX = context.labelPanelOffsetX;
         if (PreferencesManager.getPreferences().getAntiAliasing() && graphics != null) {
             graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         }
@@ -220,6 +230,34 @@ public class RenderContext {
         this.labelClipBounds = labelClipBounds == null ? null : new Rectangle(labelClipBounds);
     }
 
+    public void setLabelCoordinateTransform(AffineTransform transform) {
+        this.labelCoordinateTransform = transform == null
+                ? new AffineTransform() : new AffineTransform(transform);
+    }
+
+    /** Return a label's horizontal extent in the same coordinates as {@link #getLabelClipBounds()}. */
+    public Rectangle2D getLabelScreenBounds(double start, double width) {
+        Point2D first = labelCoordinateTransform.transform(new Point2D.Double(start, 0), null);
+        Point2D second = labelCoordinateTransform.transform(new Point2D.Double(start + width, 0), null);
+        double left = Math.min(first.getX(), second.getX());
+        return new Rectangle2D.Double(left, 0, Math.abs(second.getX() - first.getX()), 1);
+    }
+
+    public Rectangle2D getLabelPanelBounds(double start, double width) {
+        Rectangle2D local = getLabelScreenBounds(start, width);
+        return new Rectangle2D.Double(local.getX() + labelPanelOffsetX, local.getY(),
+                local.getWidth(), local.getHeight());
+    }
+
+    public void setFeatureLabelCollector(FeatureLabelCollector collector, double panelOffsetX) {
+        this.featureLabelCollector = collector;
+        this.labelPanelOffsetX = panelOffsetX;
+    }
+
+    public FeatureLabelCollector getFeatureLabelCollector() {
+        return featureLabelCollector;
+    }
+
     public Color getPositiveColor(Track track) {
         return regionOverride != null && regionOverride.getPositiveColor() != null
                 ? regionOverride.getPositiveColor() : track.getColor();
@@ -231,27 +269,28 @@ public class RenderContext {
     }
 
     public DataRange getDataRange(Track track) {
-        if (regionOverride == null || regionOverride.getYAxisMode() == TrackRegionOverride.YAxisMode.DEFAULT) {
+        if (regionOverride == null || (regionOverride.getYAxisMode() == TrackRegionOverride.YAxisMode.DEFAULT
+                && regionOverride.getPairMode() == TrackRegionOverride.PairMode.NONE)) {
             return track.getDataRange();
         }
         if (regionalDataRange == null) {
             DataRange base = track.getDataRange();
             if (base == null) return null;
-            if (regionOverride.getYAxisMode() == TrackRegionOverride.YAxisMode.FLIP) {
-                regionalDataRange = base.flipped();
-            } else if (regionOverride.getRangeMinimum() != null
+            if (regionOverride.getYAxisMode() == TrackRegionOverride.YAxisMode.CUSTOM
+                    && regionOverride.getRangeMinimum() != null
                     && regionOverride.getRangeBaseline() != null
                     && regionOverride.getRangeMaximum() != null) {
-                regionalDataRange = new DataRange(
+                base = new DataRange(
                         regionOverride.getRangeMinimum(),
                         regionOverride.getRangeBaseline(),
                         regionOverride.getRangeMaximum(),
                         base.isDrawBaseline(),
                         Boolean.TRUE.equals(regionOverride.getLogScale()));
-                regionalDataRange.setMidlineColor(base.getMidlineColor());
-            } else {
-                regionalDataRange = base;
+                base.setMidlineColor(track.getDataRange().getMidlineColor());
             }
+            boolean flip = regionOverride.getYAxisMode() == TrackRegionOverride.YAxisMode.FLIP;
+            if (regionOverride.getPairMode() == TrackRegionOverride.PairMode.FLIP) flip = !flip;
+            regionalDataRange = flip ? base.flipped() : base;
         }
         return regionalDataRange;
     }

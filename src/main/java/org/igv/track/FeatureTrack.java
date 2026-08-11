@@ -22,6 +22,7 @@ import org.igv.tools.motiffinder.MotifFinderSource;
 import org.igv.ui.IGV;
 import org.igv.ui.panel.FrameManager;
 import org.igv.ui.panel.ReferenceFrame;
+import org.igv.ui.panel.RegionDisplayCoordinateMap;
 import org.igv.ui.util.MessageUtils;
 import org.igv.util.BrowserLauncher;
 import org.igv.util.ResourceLocator;
@@ -615,14 +616,18 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
         } else {
             PackedFeatures packedFeatures = packedFeaturesMap.get(frame);
             String chr = frame.getChrName();
-            int start = (int) frame.getOrigin();
-            int end = (int) frame.getEnd();
+            RegionDisplayCoordinateMap displayMap = frame.getRegionDisplayCoordinateMap();
+            int start = (int) Math.floor(displayMap.getGenomicRenderStart());
+            int end = (int) Math.ceil(displayMap.getGenomicRenderEnd());
             return (packedFeatures != null && packedFeatures.containsInterval(chr, start, end));
         }
     }
 
     public void load(ReferenceFrame frame) {
-        loadFeatures(frame.getChrName(), (int) frame.getOrigin(), (int) frame.getEnd(), frame);
+        RegionDisplayCoordinateMap displayMap = frame.getRegionDisplayCoordinateMap();
+        loadFeatures(frame.getChrName(),
+                (int) Math.floor(displayMap.getGenomicRenderStart()),
+                (int) Math.ceil(displayMap.getGenomicRenderEnd()), frame);
         updateMaxFeatureRow();
     }
 
@@ -696,18 +701,26 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
     public void render(RenderContext context) {
 
         // Draw entire track.
-        Rectangle renderRect = context.getTrackRectangle();
-
-        context.getReferenceFrame().getCurrentRange();
-
-        renderRect.y = renderRect.y + margin;
+        // Downstream feature rendering reads the rectangle from the context.  Give this
+        // pass a private margin-adjusted rectangle and restore the shared panel rectangle
+        // afterward.  Otherwise normal and regional passes accumulate the margin, shifting
+        // regional features downward and suppressing labels as the height keeps shrinking.
+        Rectangle panelRectangle = context.getTrackRectangle();
+        Rectangle renderRect = new Rectangle(panelRectangle);
+        renderRect.y += margin;
         renderRect.height -= margin;
+        context.trackRectangle = renderRect;
+        try {
+            context.getReferenceFrame().getCurrentRange();
 
-        showFeatures = isShowFeatures(context.getReferenceFrame());
-        if (showFeatures) {
-            renderFeatures(context, renderRect);
-        } else if (coverageRenderer != null) {
-            renderCoverage(context, renderRect);
+            showFeatures = isShowFeatures(context.getReferenceFrame());
+            if (showFeatures) {
+                renderFeatures(context, renderRect);
+            } else if (coverageRenderer != null) {
+                renderCoverage(context, renderRect);
+            }
+        } finally {
+            context.trackRectangle = panelRectangle;
         }
     }
 
@@ -1003,4 +1016,3 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
         }
     }
 }
-

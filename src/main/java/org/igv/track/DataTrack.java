@@ -28,6 +28,7 @@ import org.igv.renderer.XYPlotRenderer;
 import org.igv.session.RendererFactory;
 import org.igv.ui.panel.FrameManager;
 import org.igv.ui.panel.ReferenceFrame;
+import org.igv.ui.panel.RegionDisplayCoordinateMap;
 import org.igv.util.ResourceLocator;
 import org.json.JSONObject;
 import org.w3c.dom.Element;
@@ -108,8 +109,9 @@ public abstract class DataTrack extends AbstractTrack implements ScalableTrack, 
     @Override
     public boolean isReadyToPaint(ReferenceFrame frame) {
         String chr = frame.getChrName();
-        int start = (int) frame.getOrigin();
-        int end = (int) frame.getEnd();
+        RegionDisplayCoordinateMap displayMap = frame.getRegionDisplayCoordinateMap();
+        int start = (int) Math.floor(displayMap.getGenomicRenderStart());
+        int end = (int) Math.ceil(displayMap.getGenomicRenderEnd());
         int zoom = frame.getZoom();
         LoadedDataInterval interval = loadedIntervalCache.get(frame.getName());
         return (interval != null && interval.contains(chr, start, end, zoom));
@@ -122,8 +124,9 @@ public abstract class DataTrack extends AbstractTrack implements ScalableTrack, 
         if (isReadyToPaint(referenceFrame)) return; // already loaded
 
         String chr = referenceFrame.getChrName();
-        int start = (int) referenceFrame.getOrigin();
-        int end = (int) referenceFrame.getEnd() + 1;
+        RegionDisplayCoordinateMap displayMap = referenceFrame.getRegionDisplayCoordinateMap();
+        int start = (int) Math.floor(displayMap.getGenomicRenderStart());
+        int end = (int) Math.ceil(displayMap.getGenomicRenderEnd()) + 1;
         int zoom = referenceFrame.getZoom();
         int maxEnd = end;
         Genome genome = GenomeManager.getInstance().getCurrentGenome();

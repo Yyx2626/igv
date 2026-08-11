@@ -57,4 +57,18 @@ public final class RegionDisplayBoundarySource {
         }
         return result;
     }
+
+    public static List<Interval> getCollapsedIntervals(
+            Collection<RegionOfInterest> regions, String chromosome) {
+        if (regions == null || regions.isEmpty()) return Collections.emptyList();
+        List<Interval> result = new ArrayList<>();
+        for (RegionOfInterest region : regions) {
+            if (region == null || !Objects.equals(chromosome, region.getChr())) continue;
+            RegionDisplayRule rule = region.getDisplayRule();
+            if (rule != null && rule.isCollapsed() && region.getEnd() > region.getStart()) {
+                result.add(new Interval(region.getStart(), region.getEnd()));
+            }
+        }
+        return result;
+    }
 }

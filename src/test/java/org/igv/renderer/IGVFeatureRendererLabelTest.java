@@ -32,4 +32,10 @@ public class IGVFeatureRendererLabelTest {
         assertFalse(IGVFeatureRenderer.isLabelAllowed(90, 120, 120, SEGMENT_CLIP, false));
     }
 
+    @Test
+    public void regionalPassRejectsCompletelyInvisibleLabel() {
+        assertFalse(IGVFeatureRenderer.isLabelAllowed(10, 40, 40, SEGMENT_CLIP, true));
+        assertFalse(IGVFeatureRenderer.isLabelAllowed(190, 40, 40, SEGMENT_CLIP, true));
+    }
+
 }

@@ -46,6 +46,16 @@ public class RegionDisplayRuleTest {
     }
 
     @Test
+    public void regionBarColorsAreIndependent() {
+        RegionOfInterest first = new RegionOfInterest("chr1", 10, 20, "first");
+        RegionOfInterest second = new RegionOfInterest("chr1", 30, 40, "second");
+        first.setBackgroundColor(new Color(1, 2, 3, 128));
+
+        assertEquals(new Color(1, 2, 3, 128), first.getBackgroundColor());
+        assertEquals(RegionOfInterest.DEFAULT_BAR_COLOR, second.getBackgroundColor());
+    }
+
+    @Test
     public void regionBackgroundAndForegroundAreIndependentAndPersisted() {
         RegionDisplayRule rule = new RegionDisplayRule();
         rule.setRegionBackgroundColor(new Color(10, 20, 30, 80));

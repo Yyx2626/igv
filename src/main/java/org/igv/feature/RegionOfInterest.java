@@ -18,7 +18,8 @@ public class RegionOfInterest{
     private int end;      // In Chromosome coordinates
     private final String id;
     private RegionDisplayRule displayRule;
-    private static Color backgroundColor = Color.RED;
+    public static final Color DEFAULT_BAR_COLOR = new Color(255, 0, 0, 128);
+    private Color backgroundColor = DEFAULT_BAR_COLOR;
     // The ROI strip is only an interaction affordance.  A visible outline competes with
     // region background/foreground display rules, so the default border is transparent.
     private static Color foregroundColor = new Color(0, 0, 0, 0);
@@ -126,8 +127,12 @@ public class RegionOfInterest{
         return getStart() + 1;
     }
 
-    public static Color getBackgroundColor() {
+    public Color getBackgroundColor() {
         return backgroundColor;
+    }
+
+    public void setBackgroundColor(Color backgroundColor) {
+        this.backgroundColor = backgroundColor == null ? DEFAULT_BAR_COLOR : backgroundColor;
     }
 
     public static Color getForegroundColor() {

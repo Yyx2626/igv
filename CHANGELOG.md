@@ -3,6 +3,42 @@
 This changelog records customization and debugging work in this fork. It does
 not duplicate routine changes made by the upstream `igvteam/igv` project.
 
+## August 11, 2026
+
+- Restored black ROI boundary guides on hover, made ROI strips 50% transparent,
+  and made overlapping regions paint large-to-small and select the smallest
+  containing region first.
+- Extended region-wide background and foreground colors across the actual track
+  divider components, and corrected annotation-label clipping in
+  coordinate-inverted regional passes.
+- Refined Regional Settings with double-click editing, standard inversion
+  checkboxes, row-scoped Y-axis controls, distinct Pair Swap/Pair Flip modes with
+  data-range validation, source-aware positive/negative color swapping,
+  reorganized actions, and region descriptions in dialog titles. Changes now
+  preview live while Cancel/Esc restores the original rule; cell selection keeps
+  color swatches visible and button actions preserve table focus. Region
+  Navigator now opens at a compact width.
+- Made each ROI bar color independently configurable and session-persistent,
+  repainted newly added Navigator regions immediately, and allowed the Invert
+  Coordinates column to enter editing with one click while retaining double-click
+  editing for the other editable settings.
+- Prevented feature-track margins from accumulating across normal and regional
+  render passes, which had shifted inverted annotations downward and suppressed
+  their labels. Regional Settings now keeps cell selections after toolbar actions,
+  uses a black inline editing tip, and provides a resizable Track row-header that
+  follows dialog width changes.
+- Anchored regional coordinate inversion to the ROI's fixed genomic boundaries
+  instead of its viewport-clipped rectangle, so partially visible and zoomed-in
+  inverted tracks pan in the same screen direction as ordinary track content.
+  Regional Settings now places Reset and confirmation actions on one row and uses
+  clearer table-editing guidance.
+- Deferred annotation labels to a final track label layer and selected the normal
+  or region-transformed label by feature ownership, preventing text from being
+  cut at regional boundaries while preserving foreground-mask coverage. Collapse
+  navigation now keeps the original bp-per-pixel scale, fills from genomic data
+  beyond the deleted interval, and skips collapsed coordinates during panning
+  instead of dynamically squeezing the remaining viewport.
+
 ## August 10, 2026
 
 - Added a preview of ROI-level display transformations. Regions can collapse

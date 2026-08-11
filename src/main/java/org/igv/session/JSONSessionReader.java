@@ -25,6 +25,7 @@ import org.igv.sample.SampleFilter;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.awt.Color;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -508,6 +509,12 @@ public class JSONSessionReader implements SessionReader {
                         }
                         String id = featureJson.optString("id", null);
                         RegionOfInterest roi = new RegionOfInterest(chr, start, end, description, id);
+                        JSONArray barColor = featureJson.optJSONArray("barColor");
+                        if (barColor != null && barColor.length() >= 3) {
+                            int alpha = barColor.length() >= 4 ? barColor.getInt(3) : 128;
+                            roi.setBackgroundColor(new Color(barColor.getInt(0), barColor.getInt(1),
+                                    barColor.getInt(2), alpha));
+                        }
                         JSONObject displayRuleJson = featureJson.optJSONObject("displayRule");
                         if (displayRuleJson != null) {
                             roi.setDisplayRule(RegionDisplayRule.fromJson(displayRuleJson));

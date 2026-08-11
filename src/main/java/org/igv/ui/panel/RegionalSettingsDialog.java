@@ -4,18 +4,23 @@ import org.igv.feature.RegionDisplayRule;
 import org.igv.feature.RegionOfInterest;
 import org.igv.feature.TrackRegionOverride;
 import org.igv.renderer.DataRange;
+import org.igv.track.AttributeManager;
 import org.igv.track.DataTrack;
 import org.igv.track.Track;
 import org.igv.track.TrackPairing;
 import org.igv.ui.IGV;
+import org.igv.ui.PairedDataRangeDialog;
 
 import javax.swing.*;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableCellEditor;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.EventObject;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -46,8 +51,30 @@ public final class RegionalSettingsDialog extends JDialog {
         }
     }
 
+    private enum YAxisSetting {
+        DEFAULT("Default"),
+        FLIP("Flip"),
+        CUSTOM("Custom Range"),
+        PAIR_SWAP("Pair Swap"),
+        PAIR_FLIP("Pair Flip");
+
+        private final String label;
+
+        YAxisSetting(String label) {
+            this.label = label;
+        }
+
+        @Override
+        public String toString() {
+            return label;
+        }
+    }
+
     private final RegionOfInterest region;
     private final List<Track> tracks;
+    private final RegionDisplayRule originalRule;
+    private final Color originalBarColor;
+    private Color workingBarColor;
     private RegionDisplayRule workingRule;
     private final SettingsTableModel model;
     private final JTable table;
@@ -56,6 +83,11 @@ public final class RegionalSettingsDialog extends JDialog {
     private TrackRegionOverride copiedTrackFormat;
     private Object copiedCellValue;
     private int copiedCellColumn = -1;
+    private boolean accepted;
+    private boolean restored;
+    private JButton barColorButton;
+    private int rowHeaderWidth = 240;
+    private int lastScrollPaneWidth = -1;
 
     public static void showDialog(Component parent, RegionOfInterest region, Track initiallySelectedTrack) {
         if (region == null) return;
@@ -65,17 +97,26 @@ public final class RegionalSettingsDialog extends JDialog {
     }
 
     private RegionalSettingsDialog(Window owner, RegionOfInterest region, Track initiallySelectedTrack) {
-        super(owner, "Regional Settings — " + region.getLocusString(), ModalityType.APPLICATION_MODAL);
+        super(owner, dialogTitle(region), ModalityType.APPLICATION_MODAL);
         this.region = region;
         this.tracks = collectTracks();
-        this.workingRule = region.getDisplayRule() == null
-                ? new RegionDisplayRule() : region.getDisplayRule().copy();
+        this.originalRule = region.getDisplayRule() == null ? null : region.getDisplayRule().copy();
+        this.originalBarColor = region.getBackgroundColor();
+        this.workingBarColor = originalBarColor;
+        this.workingRule = originalRule == null ? new RegionDisplayRule() : originalRule.copy();
         this.model = new SettingsTableModel();
         this.table = new JTable(model);
         this.rowHeader = createRowHeader();
         buildUi();
+        model.addTableModelListener(event -> previewWorkingRule());
         selectInitialTrack(initiallySelectedTrack);
         updateEnabledState();
+    }
+
+    private static String dialogTitle(RegionOfInterest region) {
+        String description = region.getDescription();
+        return "Regional Settings — " + region.getLocusString()
+                + (description == null || description.isBlank() ? "" : " — " + description.trim());
     }
 
     private static List<Track> collectTracks() {
@@ -93,7 +134,7 @@ public final class RegionalSettingsDialog extends JDialog {
         names.addElement("Region (all tracks)");
         for (Track track : tracks) names.addElement(track.getName());
         JList<String> list = new JList<>(names);
-        list.setFixedCellWidth(210);
+        list.setFixedCellWidth(rowHeaderWidth);
         list.setFixedCellHeight(Math.max(24, table.getRowHeight()));
         list.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         list.setSelectionModel(table.getSelectionModel());
@@ -122,38 +163,60 @@ public final class RegionalSettingsDialog extends JDialog {
         table.setSelectionForeground(Color.BLACK);
         table.setSelectionBackground(new Color(190, 215, 245));
         table.setRowHeight(Math.max(24, table.getRowHeight()));
-        int[] widths = {205, 130, 125, 125, 115, 115};
+        int[] widths = {155, 105, 100, 100, 92, 92};
         for (int i = 0; i < widths.length; i++) table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         table.setDefaultRenderer(Object.class, new SettingsRenderer());
         table.setDefaultRenderer(Color.class, new SettingsRenderer());
         table.setDefaultRenderer(Boolean.class, new SettingsRenderer());
         table.getColumnModel().getColumn(COL_ACTION).setCellEditor(new ActionCellEditor());
+        table.getColumnModel().getColumn(COL_Y_AXIS).setCellEditor(new YAxisCellEditor());
         installSelectionHandlers();
 
         JScrollPane scrollPane = new JScrollPane(table);
         scrollPane.setRowHeaderView(rowHeader);
-        JLabel targetHeader = new JLabel("Target", SwingConstants.CENTER);
+        JLabel targetHeader = new JLabel("Track", SwingConstants.CENTER);
         targetHeader.setOpaque(true);
         targetHeader.setBackground(UIManager.getColor("TableHeader.background"));
         targetHeader.setForeground(Color.BLACK);
         targetHeader.setBorder(UIManager.getBorder("TableHeader.cellBorder"));
         scrollPane.setCorner(JScrollPane.UPPER_LEFT_CORNER, targetHeader);
-        add(scrollPane, BorderLayout.CENTER);
+        installRowHeaderSizing(scrollPane, targetHeader);
+
+        JPanel tableHeader = new JPanel();
+        tableHeader.setLayout(new BoxLayout(tableHeader, BoxLayout.Y_AXIS));
+        JPanel barColorRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        barColorRow.add(new JLabel("Region Bar Color:"));
+        barColorButton = new JButton();
+        updateBarColorButton();
+        barColorButton.addActionListener(event -> chooseRegionBarColor());
+        barColorRow.add(barColorButton);
+        JLabel editingHint = new JLabel(
+                "Tip for the table below: double-click to edit cells; Column Invert Coordinates supports single-click editing");
+        editingHint.setForeground(Color.BLACK);
+        editingHint.setBorder(BorderFactory.createEmptyBorder(0, 12, 0, 0));
+        barColorRow.add(editingHint);
+        tableHeader.add(barColorRow);
+        JPanel tableArea = new JPanel(new BorderLayout());
+        tableArea.add(tableHeader, BorderLayout.NORTH);
+        tableArea.add(scrollPane, BorderLayout.CENTER);
+        add(tableArea, BorderLayout.CENTER);
 
         JPanel tools = new JPanel();
         tools.setLayout(new BoxLayout(tools, BoxLayout.Y_AXIS));
         JPanel firstTools = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        addTool(firstTools, "Set Color...", this::setSelectedColors, true);
-        addTool(firstTools, "Copy Setting", this::copySelectedCell, true);
-        addTool(firstTools, "Paste Setting", this::pasteSelectedCells, true);
-        addTool(firstTools, "Flip Y-axis", this::flipSelectedYAxis, true);
-        addTool(firstTools, "Custom Data Range...", this::setSelectedCustomRange, true);
-        addTool(firstTools, "Swap positive / negative color", this::swapSelectedColors, true);
+        addTool(firstTools, "Flip Y-Axis", this::flipSelectedYAxis, true);
+        addTool(firstTools, "Flip Track Pair", this::flipSelectedTrackPairs, true);
+        addTool(firstTools, "Custom Data Range", this::setSelectedCustomRange, true);
+        addTool(firstTools, "Set Color", this::setSelectedColors, true);
+        addTool(firstTools, "Swap Positive/Negative Color", this::swapSelectedColors, true);
         JPanel secondTools = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        addTool(secondTools, "Copy track format", this::copySelectedTrackFormat, true);
-        addTool(secondTools, "Apply format to selected tracks", this::applyCopiedTrackFormat, true);
-        addTool(secondTools, "Reset selected cells", this::resetSelectedCells, true);
-        addTool(secondTools, "Reset all", this::resetAll, false);
+        addTool(secondTools, "Copy Setting", this::copySelectedCell, true);
+        addTool(secondTools, "Paste Setting", this::pasteSelectedCells, true);
+        addTool(secondTools, "Copy Track Format", this::copySelectedTrackFormat, true);
+        addTool(secondTools, "Apply Format to Selected Tracks", this::applyCopiedTrackFormat, true);
+        JPanel thirdTools = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        addTool(thirdTools, "Reset Selected Cells", this::resetSelectedCells, true);
+        addTool(thirdTools, "Reset All", this::resetAll, false);
         tools.add(firstTools);
         tools.add(secondTools);
 
@@ -164,24 +227,162 @@ public final class RegionalSettingsDialog extends JDialog {
         JPanel confirmation = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         confirmation.add(ok);
         confirmation.add(cancel);
-        JPanel south = new JPanel(new BorderLayout());
-        south.add(tools, BorderLayout.CENTER);
-        south.add(confirmation, BorderLayout.SOUTH);
-        add(south, BorderLayout.SOUTH);
+        JPanel thirdRow = new JPanel(new BorderLayout());
+        thirdRow.add(thirdTools, BorderLayout.WEST);
+        thirdRow.add(confirmation, BorderLayout.EAST);
+        tools.add(thirdRow);
+        add(tools, BorderLayout.SOUTH);
 
         getRootPane().setDefaultButton(ok);
         getRootPane().registerKeyboardAction(event -> dispose(),
                 KeyStroke.getKeyStroke("ESCAPE"), JComponent.WHEN_IN_FOCUSED_WINDOW);
-        setSize(1060, Math.min(690, 190 + model.getRowCount() * table.getRowHeight()));
-        setMinimumSize(new Dimension(880, 330));
+        setSize(920, Math.min(690, 215 + model.getRowCount() * table.getRowHeight()));
+        setMinimumSize(new Dimension(820, 380));
         setLocationRelativeTo(getOwner());
     }
 
     private void addTool(JPanel panel, String label, Runnable action, boolean disabledWhenCollapsed) {
         JButton button = new JButton(label);
-        button.addActionListener(event -> action.run());
+        button.addActionListener(event -> {
+            TableSelection selection = captureTableSelection();
+            action.run();
+            restoreTableSelection(selection);
+            table.requestFocusInWindow();
+        });
         panel.add(button);
         if (disabledWhenCollapsed) collapseDisabledButtons.add(button);
+    }
+
+    private void installRowHeaderSizing(JScrollPane scrollPane, JLabel targetHeader) {
+        MouseAdapter resizeHandler = new MouseAdapter() {
+            private boolean dragging;
+            private int dragStartX;
+            private int dragStartWidth;
+
+            private boolean isResizeHandle(MouseEvent event) {
+                return event.getX() >= targetHeader.getWidth() - 7;
+            }
+
+            @Override
+            public void mouseMoved(MouseEvent event) {
+                targetHeader.setCursor(Cursor.getPredefinedCursor(isResizeHandle(event)
+                        ? Cursor.E_RESIZE_CURSOR : Cursor.DEFAULT_CURSOR));
+            }
+
+            @Override
+            public void mouseExited(MouseEvent event) {
+                if (!dragging) targetHeader.setCursor(Cursor.getDefaultCursor());
+            }
+
+            @Override
+            public void mousePressed(MouseEvent event) {
+                if (!SwingUtilities.isLeftMouseButton(event) || !isResizeHandle(event)) return;
+                dragging = true;
+                dragStartX = event.getXOnScreen();
+                dragStartWidth = rowHeaderWidth;
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent event) {
+                if (!dragging) return;
+                setRowHeaderWidth(dragStartWidth + event.getXOnScreen() - dragStartX, scrollPane);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent event) {
+                dragging = false;
+                targetHeader.setCursor(Cursor.getDefaultCursor());
+            }
+        };
+        targetHeader.addMouseListener(resizeHandler);
+        targetHeader.addMouseMotionListener(resizeHandler);
+
+        scrollPane.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent event) {
+                int width = scrollPane.getWidth();
+                if (lastScrollPaneWidth > 0) {
+                    setRowHeaderWidth(rowHeaderWidth + width - lastScrollPaneWidth, scrollPane);
+                }
+                lastScrollPaneWidth = width;
+            }
+        });
+    }
+
+    private void setRowHeaderWidth(int requestedWidth, JScrollPane scrollPane) {
+        int maximum = Math.max(160, scrollPane.getWidth() - 300);
+        rowHeaderWidth = Math.max(160, Math.min(requestedWidth, maximum));
+        rowHeader.setFixedCellWidth(rowHeaderWidth);
+        rowHeader.revalidate();
+        scrollPane.revalidate();
+        scrollPane.repaint();
+    }
+
+    private TableSelection captureTableSelection() {
+        return new TableSelection(table.getSelectedRows(), table.getSelectedColumns(),
+                table.getSelectionModel().getAnchorSelectionIndex(),
+                table.getSelectionModel().getLeadSelectionIndex(),
+                table.getColumnModel().getSelectionModel().getAnchorSelectionIndex(),
+                table.getColumnModel().getSelectionModel().getLeadSelectionIndex());
+    }
+
+    private void restoreTableSelection(TableSelection selection) {
+        table.clearSelection();
+        for (int row : selection.rows) table.addRowSelectionInterval(row, row);
+        for (int column : selection.columns) table.addColumnSelectionInterval(column, column);
+        if (selection.rows.length > 0) {
+            table.getSelectionModel().setAnchorSelectionIndex(selection.rowAnchor);
+            table.getSelectionModel().setLeadSelectionIndex(selection.rowLead);
+        }
+        if (selection.columns.length > 0) {
+            ListSelectionModel columns = table.getColumnModel().getSelectionModel();
+            columns.setAnchorSelectionIndex(selection.columnAnchor);
+            columns.setLeadSelectionIndex(selection.columnLead);
+        }
+    }
+
+    private static final class TableSelection {
+        private final int[] rows;
+        private final int[] columns;
+        private final int rowAnchor;
+        private final int rowLead;
+        private final int columnAnchor;
+        private final int columnLead;
+
+        private TableSelection(int[] rows, int[] columns, int rowAnchor, int rowLead,
+                               int columnAnchor, int columnLead) {
+            this.rows = rows;
+            this.columns = columns;
+            this.rowAnchor = rowAnchor;
+            this.rowLead = rowLead;
+            this.columnAnchor = columnAnchor;
+            this.columnLead = columnLead;
+        }
+    }
+
+    private void chooseRegionBarColor() {
+        Color chosen = JColorChooser.showDialog(this, "Set Region Bar Color", workingBarColor);
+        if (chosen == null) return;
+        workingBarColor = new Color(chosen.getRed(), chosen.getGreen(), chosen.getBlue(),
+                workingBarColor.getAlpha());
+        region.setBackgroundColor(workingBarColor);
+        updateBarColorButton();
+        IGV.getInstance().repaint();
+        table.requestFocusInWindow();
+    }
+
+    private void updateBarColorButton() {
+        if (barColorButton == null) return;
+        barColorButton.setText(String.format("#%02X%02X%02X", workingBarColor.getRed(),
+                workingBarColor.getGreen(), workingBarColor.getBlue()));
+        barColorButton.setOpaque(true);
+        barColorButton.setBackground(workingBarColor);
+        barColorButton.setForeground(contrastColor(workingBarColor));
+    }
+
+    private static Color contrastColor(Color color) {
+        double luminance = .2126 * color.getRed() + .7152 * color.getGreen() + .0722 * color.getBlue();
+        return luminance < 128 ? Color.WHITE : Color.BLACK;
     }
 
     private void installSelectionHandlers() {
@@ -205,9 +406,10 @@ public final class RegionalSettingsDialog extends JDialog {
         addPopupItem(popup, "Copy Setting", this::copySelectedCell);
         addPopupItem(popup, "Paste Setting", this::pasteSelectedCells);
         addPopupItem(popup, "Set Color...", this::setSelectedColors);
-        addPopupItem(popup, "Flip Y-axis", this::flipSelectedYAxis);
+        addPopupItem(popup, "Flip Y-Axis", this::flipSelectedYAxis);
+        addPopupItem(popup, "Flip Track Pair", this::flipSelectedTrackPairs);
         addPopupItem(popup, "Custom Data Range...", this::setSelectedCustomRange);
-        addPopupItem(popup, "Swap positive / negative color", this::swapSelectedColors);
+        addPopupItem(popup, "Swap Positive/Negative Color", this::swapSelectedColors);
         popup.addSeparator();
         addPopupItem(popup, "Copy track format", this::copySelectedTrackFormat);
         addPopupItem(popup, "Apply copied format to selected tracks", this::applyCopiedTrackFormat);
@@ -215,6 +417,22 @@ public final class RegionalSettingsDialog extends JDialog {
         table.addMouseListener(new MouseAdapter() {
             @Override public void mousePressed(MouseEvent event) { show(event); }
             @Override public void mouseReleased(MouseEvent event) { show(event); }
+            @Override public void mouseClicked(MouseEvent event) {
+                if (!SwingUtilities.isLeftMouseButton(event) || event.getClickCount() != 2) return;
+                int row = table.rowAtPoint(event.getPoint());
+                int column = table.columnAtPoint(event.getPoint());
+                if (row < 0 || column < 0) return;
+                int modelColumn = table.convertColumnIndexToModel(column);
+                if (!isCellAvailable(row, modelColumn)) return;
+                if (isColorColumn(modelColumn)) {
+                    table.changeSelection(row, column, false, false);
+                    setSelectedColors();
+                } else if (model.isCellEditable(row, modelColumn)) {
+                    table.editCellAt(row, column, event);
+                    Component editor = table.getEditorComponent();
+                    if (editor != null) editor.requestFocusInWindow();
+                }
+            }
             private void show(MouseEvent event) {
                 if (!event.isPopupTrigger()) return;
                 int row = table.rowAtPoint(event.getPoint());
@@ -254,11 +472,31 @@ public final class RegionalSettingsDialog extends JDialog {
 
     private void accept() {
         stopEditing();
-        region.setDisplayRule(workingRule);
+        accepted = true;
+        region.setBackgroundColor(workingBarColor);
+        publishRule(workingRule);
+        dispose();
+    }
+
+    private void previewWorkingRule() {
+        if (!accepted && !restored) publishRule(workingRule);
+    }
+
+    private void publishRule(RegionDisplayRule rule) {
+        region.setDisplayRule(rule == null ? null : rule.copy());
         IGV.getInstance().getSession().notifyRegionsOfInterestChanged();
         for (ReferenceFrame frame : FrameManager.getFrames()) frame.refreshRegionDisplayCoordinateMap();
         IGV.getInstance().repaint();
-        dispose();
+    }
+
+    @Override
+    public void dispose() {
+        if (!accepted && !restored) {
+            restored = true;
+            region.setBackgroundColor(originalBarColor);
+            publishRule(originalRule);
+        }
+        super.dispose();
     }
 
     private void updateEnabledState() {
@@ -410,8 +648,8 @@ public final class RegionalSettingsDialog extends JDialog {
             if (isColorColumn(copiedCellColumn) && isColorColumn(cell.x)) {
                 setCellColor(cell.y, cell.x, copiedCellValue instanceof Color ? (Color) copiedCellValue : null);
             } else if (copiedCellColumn == COL_Y_AXIS && cell.x == COL_Y_AXIS && cell.y > 0
-                    && copiedCellValue instanceof TrackRegionOverride.YAxisMode mode) {
-                setYAxisMode(cell.y, mode);
+                    && copiedCellValue instanceof YAxisSetting setting) {
+                setYAxisSetting(cell.y, setting);
             } else if (copiedCellColumn == COL_ACTION && cell.x == COL_ACTION && cell.y > 0
                     && copiedCellValue instanceof Boolean inverted) {
                 TrackRegionOverride value = mutableOverrideForRow(cell.y);
@@ -424,27 +662,173 @@ public final class RegionalSettingsDialog extends JDialog {
 
     private void flipSelectedYAxis() {
         stopEditing();
-        Set<String> processed = new HashSet<>();
         for (int row : table.getSelectedRows()) {
             if (row == 0 || !(trackForRow(row) instanceof DataTrack)) continue;
-            Track track = trackForRow(row);
-            if (!processed.add(track.getId())) continue;
-            TrackRegionOverride current = mutableOverrideForRow(row);
-            TrackRegionOverride.YAxisMode target = current.getYAxisMode() == TrackRegionOverride.YAxisMode.FLIP
-                    ? TrackRegionOverride.YAxisMode.DEFAULT : TrackRegionOverride.YAxisMode.FLIP;
-            setYAxisMode(row, target);
-            Track partner = TrackPairing.findPartner(track, tracks);
-            if (partner != null && partner.getId() != null) processed.add(partner.getId());
+            YAxisSetting target = yAxisSetting(overrideForRow(row)) == YAxisSetting.FLIP
+                    ? YAxisSetting.DEFAULT : YAxisSetting.FLIP;
+            setYAxisSetting(row, target);
         }
         model.fireTableDataChanged();
     }
 
-    private void setYAxisMode(int row, TrackRegionOverride.YAxisMode mode) {
+    private YAxisSetting yAxisSetting(TrackRegionOverride value) {
+        if (value == null) return YAxisSetting.DEFAULT;
+        if (value.getPairMode() == TrackRegionOverride.PairMode.SWAP) return YAxisSetting.PAIR_SWAP;
+        if (value.getPairMode() == TrackRegionOverride.PairMode.FLIP) return YAxisSetting.PAIR_FLIP;
+        return switch (value.getYAxisMode()) {
+            case DEFAULT -> YAxisSetting.DEFAULT;
+            case FLIP -> YAxisSetting.FLIP;
+            case CUSTOM -> YAxisSetting.CUSTOM;
+        };
+    }
+
+    private boolean setYAxisSetting(int row, YAxisSetting setting) {
+        if (setting == YAxisSetting.PAIR_SWAP || setting == YAxisSetting.PAIR_FLIP) {
+            return setPairModeForRow(row, setting == YAxisSetting.PAIR_FLIP
+                    ? TrackRegionOverride.PairMode.FLIP : TrackRegionOverride.PairMode.SWAP, true);
+        }
+        clearPairModeForRowAndPartner(row);
         TrackRegionOverride value = mutableOverrideForRow(row);
         value.clearCustomRange();
-        value.setYAxisMode(mode);
+        value.setPairMode(TrackRegionOverride.PairMode.NONE);
+        value.setYAxisMode(setting == YAxisSetting.FLIP
+                ? TrackRegionOverride.YAxisMode.FLIP : TrackRegionOverride.YAxisMode.DEFAULT);
         setOverrideForRow(row, value);
-        synchronizePairYAxis(row, mode);
+        return true;
+    }
+
+    private void clearPairModeForRowAndPartner(int row) {
+        Track track = trackForRow(row);
+        TrackRegionOverride current = mutableOverrideForRow(row);
+        current.setPairMode(TrackRegionOverride.PairMode.NONE);
+        setOverrideForRow(row, current);
+        Track partner = TrackPairing.findPartner(track, tracks);
+        int partnerRow = partner == null ? 0 : tracks.indexOf(partner) + 1;
+        if (partnerRow > 0) {
+            TrackRegionOverride partnerOverride = mutableOverrideForRow(partnerRow);
+            partnerOverride.setPairMode(TrackRegionOverride.PairMode.NONE);
+            setOverrideForRow(partnerRow, partnerOverride);
+        }
+    }
+
+    private boolean setPairModeForRow(int row, TrackRegionOverride.PairMode mode, boolean validateRange) {
+        Track track = trackForRow(row);
+        Track partner = TrackPairing.findPartner(track, tracks);
+        int partnerRow = partner == null ? 0 : tracks.indexOf(partner) + 1;
+        if (!(track instanceof DataTrack) || !(partner instanceof DataTrack) || partnerRow <= 0) {
+            showInfo("Pair Swap and Pair Flip require a paired numeric track.");
+            return false;
+        }
+        if (mode != TrackRegionOverride.PairMode.NONE && validateRange
+                && !ensurePairRangesCompatible(track, partner, mode)) return false;
+        for (int targetRow : new int[]{row, partnerRow}) {
+            TrackRegionOverride value = mutableOverrideForRow(targetRow);
+            value.clearCustomRange();
+            value.setYAxisMode(TrackRegionOverride.YAxisMode.DEFAULT);
+            value.setPairMode(mode);
+            setOverrideForRow(targetRow, value);
+        }
+        return true;
+    }
+
+    private void flipSelectedTrackPairs() {
+        stopEditing();
+        Set<String> processedPairs = new HashSet<>();
+        boolean foundPair = false;
+        boolean changed = false;
+        for (int row : table.getSelectedRows()) {
+            if (row == 0) continue;
+            Track track = trackForRow(row);
+            if (!(track instanceof DataTrack) || !TrackPairing.isPaired(track)
+                    || !processedPairs.add(track.getPairId())) continue;
+            Track partner = TrackPairing.findPartner(track, tracks);
+            if (!(partner instanceof DataTrack) || partner.getId() == null) continue;
+            foundPair = true;
+            TrackRegionOverride first = mutableOverrideForRow(row);
+            int partnerRow = tracks.indexOf(partner) + 1;
+            if (partnerRow <= 0) continue;
+            TrackRegionOverride second = mutableOverrideForRow(partnerRow);
+            boolean active = first.getPairMode() == TrackRegionOverride.PairMode.FLIP
+                    && second.getPairMode() == TrackRegionOverride.PairMode.FLIP;
+            changed |= setPairModeForRow(row, active
+                    ? TrackRegionOverride.PairMode.NONE : TrackRegionOverride.PairMode.FLIP, !active);
+        }
+        if (!foundPair) {
+            showInfo("Select at least one paired numeric track row first.");
+            return;
+        }
+        if (changed) model.fireTableDataChanged();
+    }
+
+    static boolean pairRangesCompatible(DataRange first, DataRange second) {
+        if (first == null || second == null || first.isLog() != second.isLog()) return false;
+        boolean same = pairRangesExactlyEqual(first, second);
+        boolean signReversed = close(first.getMinimum(), -second.getMaximum())
+                && close(first.getBaseline(), -second.getBaseline())
+                && close(first.getMaximum(), -second.getMinimum());
+        boolean axisReversed = close(first.getMinimum(), second.getMaximum())
+                && close(first.getBaseline(), second.getBaseline())
+                && close(first.getMaximum(), second.getMinimum());
+        return same || signReversed || axisReversed;
+    }
+
+    static boolean pairRangesExactlyEqual(DataRange first, DataRange second) {
+        return first != null && second != null && first.isLog() == second.isLog()
+                && close(first.getMinimum(), second.getMinimum())
+                && close(first.getBaseline(), second.getBaseline())
+                && close(first.getMaximum(), second.getMaximum());
+    }
+
+    private static boolean close(float first, float second) {
+        float scale = Math.max(1f, Math.max(Math.abs(first), Math.abs(second)));
+        return Math.abs(first - second) <= scale * 1e-5f;
+    }
+
+    private boolean ensurePairRangesCompatible(Track first, Track second,
+                                               TrackRegionOverride.PairMode mode) {
+        while (!(mode == TrackRegionOverride.PairMode.SWAP
+                ? pairRangesExactlyEqual(first.getDataRange(), second.getDataRange())
+                : pairRangesCompatible(first.getDataRange(), second.getDataRange()))) {
+            String operation = mode == TrackRegionOverride.PairMode.SWAP ? "Pair Swap" : "Pair Flip";
+            String message = "The paired tracks have different Y-axis data ranges:\n\n"
+                    + first.getName() + ": " + formatRange(first.getDataRange()) + "\n"
+                    + second.getName() + ": " + formatRange(second.getDataRange()) + "\n\n"
+                    + "Set the paired data ranges before applying " + operation + "?";
+            int result = JOptionPane.showConfirmDialog(this, message, "Pair Data Ranges Differ",
+                    JOptionPane.YES_NO_OPTION, JOptionPane.WARNING_MESSAGE);
+            if (result != JOptionPane.YES_OPTION || !showPairedDataRangeDialog(first, second)) return false;
+        }
+        return true;
+    }
+
+    private static String formatRange(DataRange range) {
+        if (range == null) return "None";
+        return range.getMinimum() + " / " + range.getBaseline() + " / " + range.getMaximum()
+                + (range.isLog() ? " (Log)" : "");
+    }
+
+    private boolean showPairedDataRangeDialog(Track first, Track second) {
+        List<Track> pair = List.of(first, second);
+        TrackPairing.Partition partition = TrackPairing.partitionTopBottom(pair);
+        DataRange topDefaults = DataRange.getFromTracks(partition.top);
+        DataRange bottomDefaults = DataRange.getFromTracks(partition.bottom);
+        PairedDataRangeDialog dialog = new PairedDataRangeDialog(
+                IGV.getInstance().getMainFrame(), topDefaults, bottomDefaults);
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+        if (dialog.isCanceled()) return false;
+        DataRange topRange = dialog.getTopDataRange(topDefaults.isDrawBaseline());
+        DataRange bottomRange = dialog.getBottomDataRange(bottomDefaults.isDrawBaseline());
+        for (Track track : partition.top) applyDataRange(track, topRange);
+        for (Track track : partition.bottom) applyDataRange(track, bottomRange);
+        IGV.getInstance().repaint(pair);
+        return true;
+    }
+
+    private static void applyDataRange(Track track, DataRange range) {
+        track.setDataRange(range.copy());
+        track.setAutoScale(false);
+        track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
     }
 
     private void setSelectedCustomRange() {
@@ -487,10 +871,11 @@ public final class RegionalSettingsDialog extends JDialog {
                     throw new NumberFormatException();
                 }
                 for (int row : rows) {
+                    clearPairModeForRowAndPartner(row);
                     TrackRegionOverride value = mutableOverrideForRow(row);
                     value.setCustomRange(min, mid, max, log.isSelected());
+                    value.setPairMode(TrackRegionOverride.PairMode.NONE);
                     setOverrideForRow(row, value);
-                    synchronizePairYAxis(row, TrackRegionOverride.YAxisMode.CUSTOM);
                 }
                 model.fireTableDataChanged();
                 return;
@@ -506,29 +891,15 @@ public final class RegionalSettingsDialog extends JDialog {
         return Float.toString(value == null ? fallback : value);
     }
 
-    private void synchronizePairYAxis(int sourceRow, TrackRegionOverride.YAxisMode mode) {
-        Track source = trackForRow(sourceRow);
-        if (!TrackPairing.isPaired(source)) return;
-        Track partner = TrackPairing.findPartner(source, tracks);
-        if (partner == null || partner.getId() == null) return;
-        TrackRegionOverride value = workingRule.getTrackOverride(partner.getId());
-        value = value == null ? new TrackRegionOverride() : value.copy();
-        if (mode == TrackRegionOverride.YAxisMode.FLIP) {
-            value.clearCustomRange();
-            value.setYAxisMode(TrackRegionOverride.YAxisMode.FLIP);
-        } else if (value.getYAxisMode() == TrackRegionOverride.YAxisMode.FLIP) {
-            value.setYAxisMode(TrackRegionOverride.YAxisMode.DEFAULT);
-        }
-        workingRule.setTrackOverride(partner.getId(), value);
-    }
-
     private void swapSelectedColors() {
         stopEditing();
         for (int row : table.getSelectedRows()) {
             if (row == 0 || !(trackForRow(row) instanceof DataTrack)) continue;
             TrackRegionOverride value = mutableOverrideForRow(row);
-            Color positive = value.getPositiveColor();
-            value.setPositiveColor(value.getNegativeColor());
+            Track track = trackForRow(row);
+            Color positive = value.getPositiveColor() == null ? track.getColor() : value.getPositiveColor();
+            Color negative = value.getNegativeColor() == null ? track.getAltColor() : value.getNegativeColor();
+            value.setPositiveColor(negative);
             value.setNegativeColor(positive);
             setOverrideForRow(row, value);
         }
@@ -554,8 +925,13 @@ public final class RegionalSettingsDialog extends JDialog {
         }
         for (int row : table.getSelectedRows()) {
             if (row == 0) continue;
-            setOverrideForRow(row, copiedTrackFormat.copy());
-            synchronizePairYAxis(row, copiedTrackFormat.getYAxisMode());
+            TrackRegionOverride copy = copiedTrackFormat.copy();
+            TrackRegionOverride.PairMode pairMode = copy.getPairMode();
+            copy.setPairMode(TrackRegionOverride.PairMode.NONE);
+            setOverrideForRow(row, copy);
+            if (pairMode != TrackRegionOverride.PairMode.NONE) {
+                setPairModeForRow(row, pairMode, true);
+            }
         }
         model.fireTableDataChanged();
     }
@@ -596,9 +972,8 @@ public final class RegionalSettingsDialog extends JDialog {
         switch (column) {
             case COL_ACTION -> value.setReverseX(false);
             case COL_Y_AXIS -> {
-                value.clearCustomRange();
-                value.setYAxisMode(TrackRegionOverride.YAxisMode.DEFAULT);
-                synchronizePairYAxis(row, TrackRegionOverride.YAxisMode.DEFAULT);
+                setYAxisSetting(row, YAxisSetting.DEFAULT);
+                return;
             }
             case COL_BACKGROUND -> value.setBackgroundColor(null);
             case COL_FOREGROUND -> value.setForegroundMaskColor(null);
@@ -624,7 +999,7 @@ public final class RegionalSettingsDialog extends JDialog {
     }
 
     private final class SettingsTableModel extends AbstractTableModel {
-        private final String[] names = {"Region action / Invert coordinates", "Y axis",
+        private final String[] names = {"Invert Coordinates", "Y Axis",
                 "Background", "Foreground", "Positive", "Negative"};
 
         @Override public int getRowCount() { return tracks.size() + 1; }
@@ -641,7 +1016,7 @@ public final class RegionalSettingsDialog extends JDialog {
 
         @Override
         public boolean isCellEditable(int row, int column) {
-            return column == COL_ACTION && isCellAvailable(row, column);
+            return (column == COL_ACTION || column == COL_Y_AXIS) && isCellAvailable(row, column);
         }
 
         @Override
@@ -657,7 +1032,7 @@ public final class RegionalSettingsDialog extends JDialog {
             TrackRegionOverride value = overrideForRow(row);
             return switch (column) {
                 case COL_ACTION -> value != null && value.isReverseX();
-                case COL_Y_AXIS -> value == null ? TrackRegionOverride.YAxisMode.DEFAULT : value.getYAxisMode();
+                case COL_Y_AXIS -> yAxisSetting(value);
                 case COL_BACKGROUND -> value == null ? null : value.getBackgroundColor();
                 case COL_FOREGROUND -> value == null ? null : value.getForegroundMaskColor();
                 case COL_POSITIVE -> value == null ? null : value.getPositiveColor();
@@ -668,38 +1043,63 @@ public final class RegionalSettingsDialog extends JDialog {
 
         @Override
         public void setValueAt(Object value, int row, int column) {
-            if (column != COL_ACTION || !isCellAvailable(row, column)) return;
-            if (row == 0 && value instanceof RegionAction action) setRegionAction(action);
-            else if (row > 0 && value instanceof Boolean inverted) {
+            if (!isCellAvailable(row, column)) return;
+            if (column == COL_ACTION && row == 0 && value instanceof RegionAction action) {
+                setRegionAction(action);
+            } else if (column == COL_ACTION && row > 0 && value instanceof Boolean inverted) {
                 TrackRegionOverride override = mutableOverrideForRow(row);
                 override.setReverseX(inverted);
                 setOverrideForRow(row, override);
                 fireTableRowsUpdated(row, row);
+            } else if (column == COL_Y_AXIS && row > 0
+                    && value instanceof YAxisSetting setting) {
+                if (setting == YAxisSetting.CUSTOM) {
+                    SwingUtilities.invokeLater(() -> {
+                        table.setRowSelectionInterval(row, row);
+                        setSelectedCustomRange();
+                    });
+                } else {
+                    setYAxisSetting(row, setting);
+                    fireTableRowsUpdated(row, row);
+                }
             }
         }
     }
 
     private final class SettingsRenderer extends DefaultTableCellRenderer {
+        private final JCheckBox checkBox = new JCheckBox();
+
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value, boolean selected,
                                                        boolean focused, int row, int column) {
-            super.getTableCellRendererComponent(table, value, selected, focused, row, column);
             int modelColumn = table.convertColumnIndexToModel(column);
             boolean available = isCellAvailable(row, modelColumn);
+            if (value instanceof Boolean inverted && available) {
+                checkBox.setSelected(inverted);
+                checkBox.setHorizontalAlignment(CENTER);
+                checkBox.setOpaque(true);
+                checkBox.setEnabled(true);
+                checkBox.setBackground(table.getBackground());
+                checkBox.setBorder(selected ? BorderFactory.createLineBorder(Color.BLACK)
+                        : BorderFactory.createEmptyBorder(1, 1, 1, 1));
+                checkBox.setBorderPainted(true);
+                return checkBox;
+            }
+            super.getTableCellRendererComponent(table, value, selected, focused, row, column);
             setHorizontalAlignment(CENTER);
             setOpaque(true);
-            setBackground(selected ? table.getSelectionBackground() : table.getBackground());
+            setBackground(table.getBackground());
             setForeground(available ? Color.BLACK : UIManager.getColor("Label.disabledForeground"));
+            setBorder(selected ? BorderFactory.createLineBorder(Color.BLACK)
+                    : BorderFactory.createEmptyBorder(1, 1, 1, 1));
             if (!available) {
                 setText("—");
             } else if (value instanceof Color color) {
-                setBackground(selected ? table.getSelectionBackground() : color);
-                setForeground(selected ? Color.BLACK : contrast(color));
+                setBackground(color);
+                setForeground(contrast(color));
                 setText(String.format("#%02X%02X%02X", color.getRed(), color.getGreen(), color.getBlue()));
             } else if (value == null) {
                 setText("Default");
-            } else if (value instanceof Boolean inverted) {
-                setText(inverted ? "☑" : "☐");
             } else {
                 setText(value.toString());
             }
@@ -714,7 +1114,7 @@ public final class RegionalSettingsDialog extends JDialog {
 
     private final class ActionCellEditor extends AbstractCellEditor implements TableCellEditor {
         private final JComboBox<RegionAction> regionActions = new JComboBox<>(RegionAction.values());
-        private final JCheckBox trackInvert = new JCheckBox("Invert coordinates within this region");
+        private final JCheckBox trackInvert = new JCheckBox();
         private int row;
         private boolean configuring;
 
@@ -724,6 +1124,11 @@ public final class RegionalSettingsDialog extends JDialog {
                 if (!configuring) fireEditingStopped();
             });
             trackInvert.addActionListener(event -> fireEditingStopped());
+        }
+
+        @Override
+        public boolean isCellEditable(EventObject event) {
+            return !(event instanceof MouseEvent mouseEvent) || mouseEvent.getClickCount() >= 1;
         }
 
         @Override
@@ -740,6 +1145,40 @@ public final class RegionalSettingsDialog extends JDialog {
             else trackInvert.setSelected(Boolean.TRUE.equals(value));
             configuring = false;
             return row == 0 ? regionActions : trackInvert;
+        }
+    }
+
+    private final class YAxisCellEditor extends AbstractCellEditor implements TableCellEditor {
+        private final JComboBox<YAxisSetting> modes = new JComboBox<>();
+        private boolean configuring;
+
+        private YAxisCellEditor() {
+            modes.addActionListener(event -> {
+                if (!configuring) fireEditingStopped();
+            });
+        }
+
+        @Override
+        public boolean isCellEditable(EventObject event) {
+            return !(event instanceof MouseEvent mouseEvent) || mouseEvent.getClickCount() >= 2;
+        }
+
+        @Override
+        public Object getCellEditorValue() {
+            return modes.getSelectedItem();
+        }
+
+        @Override
+        public Component getTableCellEditorComponent(JTable table, Object value, boolean selected,
+                                                     int row, int column) {
+            configuring = true;
+            YAxisSetting[] choices = TrackPairing.isPaired(trackForRow(row))
+                    ? YAxisSetting.values()
+                    : new YAxisSetting[]{YAxisSetting.DEFAULT, YAxisSetting.FLIP, YAxisSetting.CUSTOM};
+            modes.setModel(new DefaultComboBoxModel<>(choices));
+            modes.setSelectedItem(value);
+            configuring = false;
+            return modes;
         }
     }
 

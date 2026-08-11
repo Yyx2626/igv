@@ -20,6 +20,7 @@ import org.igv.logging.LogManager;
 import org.igv.logging.Logger;
 import org.igv.prefs.Constants;
 import org.igv.prefs.PreferencesManager;
+import org.igv.renderer.FeatureLabelCollector;
 import org.igv.track.RenderContext;
 import org.igv.track.Track;
 import org.igv.track.TrackClickEvent;
@@ -40,6 +41,7 @@ import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
+import java.awt.geom.AffineTransform;
 import java.text.DecimalFormat;
 import java.util.Collection;
 import java.util.ArrayList;
@@ -164,20 +166,27 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             trackRectangle.x = 0;               // Adjust to be relative to the panel, not the parent
             trackRectangle.y = 0;
             final Rectangle clipBounds = g.getClipBounds();
+            FeatureLabelCollector labelCollector = new FeatureLabelCollector();
+            registerRegionalLabelTargets(labelCollector, trackRectangle);
 
             drawRegionFills(graphics2D, trackRectangle, false);
 
             RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
             if (coordinateMap.hasCollapsedIntervals()) {
                 paintTrackWithDisplaySegments(getTrack(), null, graphics2D, trackRectangle,
-                        visibleRect, clipBounds, null, null, coordinateMap);
+                        visibleRect, clipBounds, null, null, coordinateMap, labelCollector);
             } else {
                 trackGraphics = createTrackGraphics(graphics2D, getWidth());
                 context = new RenderContext(this, trackGraphics, frame, trackRectangle, visibleRect, clipBounds);
                 context.setLabelClipBounds(trackRectangle);
+                context.setLabelCoordinateTransform(createLabelTransform(getWidth(), null));
+                context.setFeatureLabelCollector(labelCollector, 0);
                 painter.paint(getTrack(), context);
             }
-            paintTrackRegionOverrides(graphics2D, trackRectangle, visibleRect, clipBounds);
+            List<RegionalForeground> regionalForegrounds = paintTrackRegionOverrides(
+                    graphics2D, trackRectangle, visibleRect, clipBounds, labelCollector);
+            labelCollector.paint(graphics2D);
+            paintRegionalForegrounds(graphics2D, regionalForegrounds);
             drawRegionFills(graphics2D, trackRectangle, true);
 
             // If there is a partial ROI in progress draw it first
@@ -233,11 +242,13 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         try {
             g.setColor(getEffectiveTrackBackground());
             g.fillRect(rect.x, rect.y, rect.width, rect.height);
+            FeatureLabelCollector labelCollector = new FeatureLabelCollector();
+            registerRegionalLabelTargets(labelCollector, rect);
             drawRegionFills(g, rect, false);
             RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
             if (coordinateMap.hasCollapsedIntervals()) {
                 paintTrackWithDisplaySegments(getTrack(), null, g, rect, rect, rect,
-                        null, null, coordinateMap);
+                        null, null, coordinateMap, labelCollector);
             } else {
                 trackGraphics = createTrackGraphics(g, rect.width);
                 context = new RenderContext(null, trackGraphics, frame, rect, rect, rect);
@@ -249,9 +260,14 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
                         rect.height - (insets.top + insets.bottom));
                 context.getGraphics().setClip(contentRect);
                 context.setLabelClipBounds(contentRect);
+                context.setLabelCoordinateTransform(createLabelTransform(rect.width, null));
+                context.setFeatureLabelCollector(labelCollector, 0);
                 painter.paint(getTrack(), context);
             }
-            paintTrackRegionOverrides(g, rect, rect, rect);
+            List<RegionalForeground> regionalForegrounds = paintTrackRegionOverrides(
+                    g, rect, rect, rect, labelCollector);
+            labelCollector.paint(g);
+            paintRegionalForegrounds(g, regionalForegrounds);
             drawRegionFills(g, rect, true);
             drawAllRegions(g);
 
@@ -267,6 +283,27 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
 
     private Color getEffectiveTrackBackground() {
         return getEffectiveTrackBackground(getTrack());
+    }
+
+    private void registerRegionalLabelTargets(FeatureLabelCollector collector, Rectangle trackRect) {
+        Track track = getTrack();
+        if (track == null || track.getId() == null || !IGV.hasInstance()) return;
+        Collection<RegionOfInterest> regions =
+                IGV.getInstance().getSession().getRegionsOfInterest(frame.getChrName());
+        if (regions == null) return;
+        double viewportStart = frame.getOrigin();
+        double viewportEnd = frame.getEnd();
+        for (RegionOfInterest region : regions) {
+            RegionDisplayRule rule = region.getDisplayRule();
+            if (rule == null || rule.isCollapsed()
+                    || region.getEnd() <= viewportStart || region.getStart() >= viewportEnd) continue;
+            TrackRegionOverride override = rule.getTrackOverride(track.getId());
+            if (override == null || !override.hasAnyEffect()) continue;
+            int first = frame.getScreenPosition(Math.max(viewportStart, region.getStart()));
+            int second = frame.getScreenPosition(Math.min(viewportEnd, region.getEnd()));
+            collector.addRegionalTarget(new Rectangle(Math.min(first, second), trackRect.y,
+                    Math.max(1, Math.abs(second - first) + 1), trackRect.height));
+        }
     }
 
     private Color getEffectiveTrackBackground(Track track) {
@@ -296,7 +333,9 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         Graphics2D graphics = (Graphics2D) source.create();
         try {
             graphics.clip(trackRect);
-            for (RegionOfInterest region : regions) {
+            List<RegionOfInterest> paintOrder = new ArrayList<>(regions);
+            paintOrder.sort(Comparator.comparingInt(RegionOfInterest::getLength).reversed());
+            for (RegionOfInterest region : paintOrder) {
                 RegionDisplayRule rule = region.getDisplayRule();
                 if (rule == null || rule.isCollapsed()) continue;
                 Color color = foreground ? rule.getRegionForegroundColor() : rule.getRegionBackgroundColor();
@@ -315,13 +354,14 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         }
     }
 
-    private void paintTrackRegionOverrides(Graphics2D source, Rectangle trackRect,
-                                           Rectangle visibleRect, Rectangle clipBounds) {
+    private List<RegionalForeground> paintTrackRegionOverrides(
+            Graphics2D source, Rectangle trackRect, Rectangle visibleRect,
+            Rectangle clipBounds, FeatureLabelCollector labelCollector) {
         Track track = getTrack();
-        if (track == null || track.getId() == null) return;
+        if (track == null || track.getId() == null) return List.of();
         Collection<RegionOfInterest> allRegions =
                 IGV.getInstance().getSession().getRegionsOfInterest(frame.getChrName());
-        if (allRegions == null || allRegions.isEmpty()) return;
+        if (allRegions == null || allRegions.isEmpty()) return List.of();
 
         double viewportStart = frame.getOrigin();
         double viewportEnd = frame.getEnd();
@@ -335,14 +375,15 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         }
         regions.sort(Comparator.comparingInt(region -> region.getDisplayRule().getPriority()));
 
-        if (regions.isEmpty()) return;
+        if (regions.isEmpty()) return List.of();
 
+        List<RegionalForeground> foregrounds = new ArrayList<>();
         for (RegionalTrackSlice slice : createRegionalTrackSlices(
                 regions, allRegions, track, viewportStart, viewportEnd)) {
             TrackRegionOverride override = slice.override();
             Track renderTrack = track;
             TrackRegionOverride renderOverride = override;
-            if (override.getYAxisMode() == TrackRegionOverride.YAxisMode.FLIP && TrackPairing.isPaired(track)) {
+            if (override.exchangesTrackPair() && TrackPairing.isPaired(track)) {
                 Track partner = TrackPairing.findPartner(track, IGV.getInstance().getAllTracks());
                 if (partner != null) {
                     renderTrack = partner;
@@ -353,6 +394,7 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             Rectangle regionRect = new Rectangle(
                     Math.min(first, second), trackRect.y,
                     Math.max(1, Math.abs(second - first) + 1), trackRect.height);
+            labelCollector.addRegionalTarget(regionRect);
 
             Graphics2D background = (Graphics2D) source.create();
             try {
@@ -375,21 +417,24 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
             if (coordinateMap.hasCollapsedIntervals()) {
                 paintTrackWithDisplaySegments(renderTrack, renderOverride, source, trackRect,
-                        visibleRect, clipBounds, slice.start(), slice.end(), coordinateMap);
+                        visibleRect, clipBounds, slice.start(), slice.end(), coordinateMap,
+                        labelCollector);
+            } else if (renderOverride.isReverseX() && slice.inversionSum() != null) {
+                paintInvertedRegionalSlice(renderTrack, renderOverride, source, trackRect,
+                        visibleRect, regionRect, slice.start(), slice.end(), slice.inversionSum(),
+                        labelCollector);
             } else {
                 Graphics2D clippedSource = (Graphics2D) source.create();
                 Graphics2D regionalTrackGraphics = null;
                 RenderContext regionalContext = null;
                 try {
                     clippedSource.clip(regionRect);
-                    if (renderOverride.isReverseX()) {
-                        clippedSource.translate(2.0 * regionRect.x + regionRect.width, 0);
-                        clippedSource.scale(-1, 1);
-                    }
                     regionalTrackGraphics = createTrackGraphics(clippedSource, trackRect.width);
                     regionalContext = new RenderContext(this, regionalTrackGraphics, frame,
                             trackRect, visibleRect, regionRect);
                     regionalContext.setLabelClipBounds(regionRect);
+                    regionalContext.setLabelCoordinateTransform(createLabelTransform(trackRect.width, null));
+                    regionalContext.setFeatureLabelCollector(labelCollector, 0);
                     regionalContext.setRegionOverride(renderOverride);
                     regionalContext.setRegionalPass(true);
                     painter.paint(renderTrack, regionalContext);
@@ -401,16 +446,28 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
             }
 
             if (renderOverride.getForegroundMaskColor() != null) {
-                Graphics2D foreground = (Graphics2D) source.create();
-                try {
-                    foreground.clip(regionRect);
-                    foreground.setColor(renderOverride.getForegroundMaskColor());
-                    foreground.fill(regionRect);
-                } finally {
-                    foreground.dispose();
-                }
+                foregrounds.add(new RegionalForeground(
+                        new Rectangle(regionRect), renderOverride.getForegroundMaskColor()));
             }
         }
+        return foregrounds;
+    }
+
+    private void paintRegionalForegrounds(Graphics2D source,
+                                           List<RegionalForeground> foregrounds) {
+        for (RegionalForeground regionalForeground : foregrounds) {
+            Graphics2D foreground = (Graphics2D) source.create();
+            try {
+                foreground.clip(regionalForeground.rectangle());
+                foreground.setColor(regionalForeground.color());
+                foreground.fill(regionalForeground.rectangle());
+            } finally {
+                foreground.dispose();
+            }
+        }
+    }
+
+    private record RegionalForeground(Rectangle rectangle, Color color) {
     }
 
     /**
@@ -442,6 +499,8 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
                     .toList();
             if (covering.isEmpty()) continue;
             TrackRegionOverride effective = composeOverrides(covering, track);
+            Double inversionSum = effective.isReverseX()
+                    ? composeInversionSum(covering, track) : null;
             Color highlight = null;
             for (RegionOfInterest region : displayOrder) {
                 RegionDisplayRule rule = region.getDisplayRule();
@@ -450,9 +509,26 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
                     highlight = rule.getRegionBackgroundColor();
                 }
             }
-            result.add(new RegionalTrackSlice(start, end, effective, highlight));
+            result.add(new RegionalTrackSlice(start, end, effective, highlight, inversionSum));
         }
         return result;
+    }
+
+    /**
+     * Compose fixed genomic reflection axes in display priority order.  For one ROI this is
+     * simply {@code roiStart + roiEnd}; importantly it never depends on the visible viewport.
+     */
+    private Double composeInversionSum(List<RegionOfInterest> regions, Track track) {
+        boolean reversed = false;
+        double offset = 0;
+        for (RegionOfInterest region : regions) {
+            TrackRegionOverride override = region.getDisplayRule().getTrackOverride(track.getId());
+            if (override != null && override.isReverseX()) {
+                reversed = !reversed;
+                offset = region.getStart() + (double) region.getEnd() - offset;
+            }
+        }
+        return reversed ? offset : null;
     }
 
     private TrackRegionOverride composeOverrides(List<RegionOfInterest> regions, Track track) {
@@ -464,20 +540,73 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
     }
 
     private record RegionalTrackSlice(double start, double end, TrackRegionOverride override,
-                                      Color highlightColor) {
+                                      Color highlightColor, Double inversionSum) {
+    }
+
+    static double[] invertedSourceInterval(double targetStart, double targetEnd,
+                                           double inversionSum) {
+        return new double[]{inversionSum - targetEnd, inversionSum - targetStart};
+    }
+
+    private void paintInvertedRegionalSlice(Track track, TrackRegionOverride override,
+                                            Graphics2D source, Rectangle trackRect,
+                                            Rectangle visibleRect, Rectangle targetRect,
+                                            double targetStart, double targetEnd,
+                                            double inversionSum,
+                                            FeatureLabelCollector labelCollector) {
+        double[] sourceInterval = invertedSourceInterval(targetStart, targetEnd, inversionSum);
+        double sourceStart = sourceInterval[0];
+        double sourceEnd = sourceInterval[1];
+        if (sourceEnd <= sourceStart) return;
+
+        Graphics2D sliceSource = (Graphics2D) source.create();
+        Graphics2D sliceTrackGraphics = null;
+        RenderContext sliceContext = null;
+        try {
+            sliceSource.clip(targetRect);
+            sliceSource.translate(targetRect.x, 0);
+            sliceSource.translate(targetRect.width, 0);
+            sliceSource.scale(-1, 1);
+            sliceTrackGraphics = createTrackGraphics(sliceSource, targetRect.width);
+
+            Rectangle localTrackRect = new Rectangle(
+                    0, trackRect.y, targetRect.width, trackRect.height);
+            Rectangle localVisibleRect = new Rectangle(
+                    0, visibleRect.y, targetRect.width, visibleRect.height);
+            sliceContext = new RenderContext(this, sliceTrackGraphics, frame,
+                    localTrackRect, localVisibleRect, localTrackRect);
+            sliceContext.setLabelClipBounds(localTrackRect);
+            sliceContext.setLabelCoordinateTransform(createLabelTransform(targetRect.width,
+                    new Rectangle(0, trackRect.y, targetRect.width, trackRect.height)));
+            sliceContext.setFeatureLabelCollector(labelCollector, targetRect.x);
+            sliceContext.setViewTransform(sourceStart, sourceEnd,
+                    (sourceEnd - sourceStart) / Math.max(1, targetRect.width));
+
+            int requestedBins = Math.max(1,
+                    PreferencesManager.getPreferences().getAsInt(Constants.SCREENSHOT_DATA_BINS));
+            int sliceBins = Math.max(1, (int) Math.ceil(
+                    requestedBins * targetRect.width / (double) Math.max(1, trackRect.width)));
+            sliceContext.setDisplayBinPlan(RegionDisplayBinPlanner.create(frame.getChrName(),
+                    Math.max(0, (int) Math.floor(sourceStart)),
+                    Math.max(1, (int) Math.ceil(sourceEnd)), sliceBins));
+            sliceContext.setRegionOverride(override);
+            sliceContext.setRegionalPass(true);
+            painter.paint(track, sliceContext);
+        } finally {
+            if (sliceContext != null) sliceContext.dispose();
+            if (sliceTrackGraphics != null) sliceTrackGraphics.dispose();
+            sliceSource.dispose();
+        }
     }
 
     private void paintTrackWithDisplaySegments(Track track, TrackRegionOverride override,
                                                Graphics2D source, Rectangle trackRect,
                                                Rectangle visibleRect, Rectangle clipBounds,
                                                Double limitingStart, Double limitingEnd,
-                                               RegionDisplayCoordinateMap coordinateMap) {
-        int rangeStart = Math.max(0, (int) Math.floor(frame.getOrigin()));
-        int rangeEnd = Math.max(rangeStart + 1, (int) Math.ceil(frame.getEnd()));
+                                               RegionDisplayCoordinateMap coordinateMap,
+                                               FeatureLabelCollector labelCollector) {
         int requestedBins = Math.max(1,
                 PreferencesManager.getPreferences().getAsInt(Constants.SCREENSHOT_DATA_BINS));
-        DisplayBinPlan fullPlan = RegionDisplayBinPlanner.create(
-                frame.getChrName(), rangeStart, rangeEnd, requestedBins);
 
         for (RegionDisplayCoordinateMap.Segment segment : coordinateMap.getSegments()) {
             double genomicStart = segment.genomicStart();
@@ -508,9 +637,18 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
                 segmentContext = new RenderContext(this, segmentTrackGraphics, frame,
                         localTrackRect, localVisibleRect, localTrackRect);
                 segmentContext.setLabelClipBounds(localTrackRect);
+                segmentContext.setLabelCoordinateTransform(
+                        createLabelTransform(screenRect.width,
+                                override != null && override.isReverseX()
+                                        ? new Rectangle(0, trackRect.y, screenRect.width, trackRect.height)
+                                        : null));
+                segmentContext.setFeatureLabelCollector(labelCollector, screenRect.x);
                 segmentContext.setViewTransform(genomicStart, genomicEnd, coordinateMap.getDisplayScale());
-                segmentContext.setDisplayBinPlan(fullPlan.subset(
-                        (int) Math.floor(genomicStart), (int) Math.ceil(genomicEnd)));
+                int segmentBins = Math.max(1, (int) Math.ceil(
+                        requestedBins * screenRect.width / (double) Math.max(1, trackRect.width)));
+                segmentContext.setDisplayBinPlan(RegionDisplayBinPlanner.create(frame.getChrName(),
+                        Math.max(0, (int) Math.floor(genomicStart)),
+                        Math.max(1, (int) Math.ceil(genomicEnd)), segmentBins));
                 segmentContext.setRegionOverride(override);
                 segmentContext.setRegionalPass(override != null || screenRect.x != 0);
                 painter.paint(track, segmentContext);
@@ -573,10 +711,25 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
 
         // Set foreground color of boundaries
         int height = getHeight();
-        graphics2D.setColor(regionOfInterest.getForegroundColor());
+        graphics2D.setColor(regionOfInterest == RegionOfInterestPanel.getSelectedRegion()
+                ? Color.BLACK : regionOfInterest.getForegroundColor());
         graphics2D.drawLine(start, 0, start, height);
         graphics2D.drawLine(end, 0, end, height);
         return false;
+    }
+
+    /** Mapping from renderer pixel coordinates to the untransformed label clip coordinates. */
+    private AffineTransform createLabelTransform(int width, Rectangle regionalMirror) {
+        AffineTransform transform = new AffineTransform();
+        if (regionalMirror != null) {
+            transform.translate(2.0 * regionalMirror.x + regionalMirror.width, 0);
+            transform.scale(-1, 1);
+        }
+        if (frame.isInverted()) {
+            transform.translate(width, 0);
+            transform.scale(-1, 1);
+        }
+        return transform;
     }
 
 

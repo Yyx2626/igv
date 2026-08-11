@@ -16,7 +16,10 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * @author eflakes
@@ -65,7 +68,10 @@ public class RegionOfInterestPanel extends JPanel {
             return;
         }
 
-        for (RegionOfInterest regionOfInterest : regions) {
+        // Paint larger regions first so nested/smaller regions remain visible and selectable.
+        List<RegionOfInterest> paintOrder = new ArrayList<>(regions);
+        paintOrder.sort(Comparator.comparingInt(RegionOfInterest::getLength).reversed());
+        for (RegionOfInterest regionOfInterest : paintOrder) {
 
             int regionStart = regionOfInterest.getStart();
             int regionEnd = regionOfInterest.getEnd();
@@ -100,8 +106,11 @@ public class RegionOfInterestPanel extends JPanel {
 
         Collection<RegionOfInterest> roiList = getRegions();
         if (roiList != null) {
-            for (RegionOfInterest roi : roiList) {
-                if (pos > roi.getStart() && pos < roi.getEnd()) {
+            // Match the topmost paint order: the smallest containing region wins.
+            List<RegionOfInterest> hitOrder = new ArrayList<>(roiList);
+            hitOrder.sort(Comparator.comparingInt(RegionOfInterest::getLength));
+            for (RegionOfInterest roi : hitOrder) {
+                if (pos >= roi.getStart() && pos <= roi.getEnd()) {
                     return roi;
                 }
             }

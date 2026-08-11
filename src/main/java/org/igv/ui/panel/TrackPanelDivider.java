@@ -4,6 +4,8 @@ import org.igv.Globals;
 import org.igv.event.IGVEvent;
 import org.igv.event.IGVEventBus;
 import org.igv.event.IGVEventObserver;
+import org.igv.feature.RegionDisplayRule;
+import org.igv.feature.RegionOfInterest;
 import org.igv.prefs.Constants;
 import org.igv.prefs.IGVPreferences;
 import org.igv.prefs.PreferencesChangeEvent;
@@ -21,6 +23,8 @@ import java.awt.dnd.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -448,6 +452,92 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
         if (visualHeight <= 0) return;
         g.setColor(computeBorderColor());
         g.fillRect(0, 0, getWidth(), Math.min(visualHeight, getHeight()));
+        paintRegionalOverlay((Graphics2D) g, Math.min(visualHeight, getHeight()));
+    }
+
+    /**
+     * The divider is a sibling of the tracks, so a fill painted by DataPanel can never cover
+     * it. Paint region-wide background/foreground colors here as well, limited to each visible
+     * reference frame's data column. Track-specific colors intentionally stop at the track edge.
+     */
+    private void paintRegionalOverlay(Graphics2D source, int height) {
+        TrackPanelScrollPane pane = getEffectiveAbovePane();
+        if (pane == null) return;
+        DataPanelContainer container = pane.getTrackPanel().getDataPanelContainer();
+        if (container == null) return;
+
+        for (Component component : container.getComponents()) {
+            if (!(component instanceof DataPanel dataPanel) || dataPanel.getWidth() <= 0) continue;
+            ReferenceFrame frame = dataPanel.getFrame();
+            Collection<RegionOfInterest> collection =
+                    IGV.getInstance().getSession().getRegionsOfInterest(frame.getChrName());
+            if (collection == null || collection.isEmpty()) continue;
+
+            List<RegionOfInterest> regions = new ArrayList<>(collection);
+            // Larger first, smaller last: nested region colors agree with the ROI strip's
+            // visible stacking and hit-testing order.
+            regions.sort(Comparator.comparingInt(RegionOfInterest::getLength).reversed());
+            Point panelOrigin = SwingUtilities.convertPoint(dataPanel, 0, 0, this);
+            Rectangle dataBounds = new Rectangle(panelOrigin.x, 0, dataPanel.getWidth(), height);
+            Graphics2D graphics = (Graphics2D) source.create();
+            try {
+                graphics.clip(dataBounds);
+                paintRegionalOverlayBase(graphics, frame, regions, dataBounds.x, height,
+                        effectiveTrackBackground(getOverrideTrack()));
+                paintRegionalOverlayPass(graphics, frame, regions, dataBounds.x, false, height);
+                paintRegionalOverlayPass(graphics, frame, regions, dataBounds.x, true, height);
+            } finally {
+                graphics.dispose();
+            }
+        }
+    }
+
+    private Color effectiveTrackBackground(Track track) {
+        Color override = track == null ? null : track.getBackgroundColorOverride();
+        if (override != null) return override;
+        IGVPreferences preferences = PreferencesManager.getPreferences();
+        return Globals.isDarkMode() && !preferences.hasExplicitValue(Constants.TRACK_BACKGROUND_COLOR)
+                ? UIManager.getColor("Panel.background")
+                : preferences.getAsColor(Constants.TRACK_BACKGROUND_COLOR);
+    }
+
+    private void paintRegionalOverlayBase(Graphics2D graphics, ReferenceFrame frame,
+                                          List<RegionOfInterest> regions, int xOffset,
+                                          int height, Color baseColor) {
+        double viewportStart = frame.getOrigin();
+        double viewportEnd = frame.getEnd();
+        for (RegionOfInterest region : regions) {
+            RegionDisplayRule rule = region.getDisplayRule();
+            if (rule == null || rule.isCollapsed()
+                    || (rule.getRegionBackgroundColor() == null && rule.getRegionForegroundColor() == null)
+                    || region.getEnd() <= viewportStart || region.getStart() >= viewportEnd) continue;
+            int first = xOffset + frame.getScreenPosition(Math.max(viewportStart, region.getStart()));
+            int second = xOffset + frame.getScreenPosition(Math.min(viewportEnd, region.getEnd()));
+            graphics.setComposite(AlphaComposite.Src);
+            graphics.setColor(baseColor);
+            graphics.fillRect(Math.min(first, second), 0,
+                    Math.max(1, Math.abs(second - first) + 1), height);
+            graphics.setComposite(AlphaComposite.SrcOver);
+        }
+    }
+
+    private void paintRegionalOverlayPass(Graphics2D graphics, ReferenceFrame frame,
+                                          List<RegionOfInterest> regions, int xOffset,
+                                          boolean foreground, int height) {
+        double viewportStart = frame.getOrigin();
+        double viewportEnd = frame.getEnd();
+        for (RegionOfInterest region : regions) {
+            RegionDisplayRule rule = region.getDisplayRule();
+            if (rule == null || rule.isCollapsed()
+                    || region.getEnd() <= viewportStart || region.getStart() >= viewportEnd) continue;
+            Color color = foreground ? rule.getRegionForegroundColor() : rule.getRegionBackgroundColor();
+            if (color == null) continue;
+            int first = xOffset + frame.getScreenPosition(Math.max(viewportStart, region.getStart()));
+            int second = xOffset + frame.getScreenPosition(Math.min(viewportEnd, region.getEnd()));
+            int x = Math.min(first, second);
+            int width = Math.max(1, Math.abs(second - first) + 1);
+            graphics.setColor(color);
+            graphics.fillRect(x, 0, width, height);
+        }
     }
 }
-

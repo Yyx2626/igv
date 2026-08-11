@@ -24,6 +24,7 @@ import org.w3c.dom.Element;
 
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
+import java.awt.Color;
 import java.io.*;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -133,6 +134,9 @@ public class JSONSessionWriter {
                 if (region.getDescription() != null) {
                     featureJson.put("description", region.getDescription());
                 }
+                Color barColor = region.getBackgroundColor();
+                featureJson.put("barColor", new JSONArray(new int[]{barColor.getRed(), barColor.getGreen(),
+                        barColor.getBlue(), barColor.getAlpha()}));
                 if (region.hasActiveDisplayRule()) {
                     featureJson.put("displayRule", region.getDisplayRule().toJson());
                 }

@@ -110,11 +110,11 @@ public class RegionNavigatorDialog extends org.igv.ui.IGVDialog implements Obser
         table.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         table.setDefaultRenderer(RegionalSettingsValue.class, new SettingsRenderer());
         table.setDefaultRenderer(Integer.class, new CoordinateRenderer());
-        int[] widths = {70, 105, 105, 260, 220};
+        int[] widths = {65, 95, 95, 180, 155};
         for (int i = 0; i < widths.length; i++) table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
         table.addMouseListener(new TableMouseHandler());
         JScrollPane scroll = new JScrollPane(table);
-        table.setPreferredScrollableViewportSize(new Dimension(760, Math.max(120, table.getRowHeight() * 6)));
+        table.setPreferredScrollableViewportSize(new Dimension(590, Math.max(120, table.getRowHeight() * 6)));
         add(scroll, BorderLayout.CENTER);
 
         JPanel navigation = new JPanel(new FlowLayout(FlowLayout.LEFT));
@@ -133,8 +133,8 @@ public class RegionNavigatorDialog extends org.igv.ui.IGVDialog implements Obser
         bottom.add(searchPanel);
         add(bottom, BorderLayout.SOUTH);
 
-        setSize(820, 370);
-        setMinimumSize(new Dimension(650, 300));
+        setSize(680, 370);
+        setMinimumSize(new Dimension(600, 300));
         setLocationRelativeTo(getOwner());
     }
 
@@ -181,6 +181,16 @@ public class RegionNavigatorDialog extends org.igv.ui.IGVDialog implements Obser
         refreshFilter();
     }
 
+    /** Commit an active cell edit before callers read/export the session ROI collection. */
+    public void updateROIsFromRegionTable() {
+        if (table.isEditing() && table.getCellEditor() != null) {
+            table.getCellEditor().stopCellEditing();
+        }
+        boolean changed = false;
+        for (int row = 0; row < model.getRowCount(); row++) changed |= updateRegion(row);
+        if (changed) IGV.getInstance().getSession().notifyRegionsOfInterestChanged();
+    }
+
     public void synchRegions() {
         synchronizing = true;
         try {
@@ -225,7 +235,7 @@ public class RegionNavigatorDialog extends org.igv.ui.IGVDialog implements Obser
             showInfo("Select a chromosome before creating a region.");
         } else {
             Range range = FrameManager.getDefaultFrame().getCurrentRange();
-            IGV.getInstance().getSession().addRegionOfInterest(
+            IGV.getInstance().addRegionOfInterest(
                     new RegionOfInterest(range.getChr(), range.getStart(), range.getEnd(), ""));
         }
     }

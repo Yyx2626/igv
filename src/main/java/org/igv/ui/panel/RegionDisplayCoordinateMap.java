@@ -27,6 +27,7 @@ public final class RegionDisplayCoordinateMap {
     private final int width;
     private final boolean inverted;
     private final List<GenomicSegment> visibleSegments;
+    private final List<GenomicSegment> collapsedIntervals;
     private final double visibleSpan;
     private final double displayScale;
     private final boolean hasCollapsedIntervals;
@@ -34,6 +35,7 @@ public final class RegionDisplayCoordinateMap {
 
     private RegionDisplayCoordinateMap(String chromosome, double rangeStart, double rangeEnd, int width,
                                        boolean inverted, List<GenomicSegment> visibleSegments,
+                                       List<GenomicSegment> collapsedIntervals,
                                        boolean hasCollapsedIntervals, long regionsRevision) {
         this.chromosome = chromosome;
         this.rangeStart = rangeStart;
@@ -41,6 +43,7 @@ public final class RegionDisplayCoordinateMap {
         this.width = Math.max(1, width);
         this.inverted = inverted;
         this.visibleSegments = List.copyOf(visibleSegments);
+        this.collapsedIntervals = List.copyOf(collapsedIntervals);
         this.visibleSpan = visibleSegments.stream().mapToDouble(GenomicSegment::length).sum();
         this.displayScale = visibleSpan > 0 ? visibleSpan / this.width : 1;
         this.hasCollapsedIntervals = hasCollapsedIntervals;
@@ -58,8 +61,7 @@ public final class RegionDisplayCoordinateMap {
         Collection<RegionOfInterest> regions =
                 IGV.getInstance().getSession().getRegionsOfInterest(frame.getChrName());
         List<RegionDisplayBoundarySource.Interval> collapsed =
-                RegionDisplayBoundarySource.getVisibleCollapsedIntervals(regions, frame.getChrName(),
-                        (int) Math.floor(start), (int) Math.ceil(end));
+                RegionDisplayBoundarySource.getCollapsedIntervals(regions, frame.getChrName());
         return create(frame.getChrName(), start, end, width, frame.isInverted(), collapsed, revision);
     }
 
@@ -73,19 +75,18 @@ public final class RegionDisplayCoordinateMap {
                                                       int width, boolean inverted,
                                                       Collection<RegionDisplayBoundarySource.Interval> collapsed,
                                                       long regionsRevision) {
-        List<GenomicSegment> merged = merge(collapsed, rangeStart, rangeEnd);
+        List<GenomicSegment> merged = merge(collapsed);
         if (merged.isEmpty()) {
             return ordinary(chromosome, rangeStart, rangeEnd, width, inverted, regionsRevision);
         }
-        List<GenomicSegment> visible = new ArrayList<>();
-        double cursor = rangeStart;
-        for (GenomicSegment interval : merged) {
-            if (interval.start() > cursor) visible.add(new GenomicSegment(cursor, interval.start()));
-            cursor = Math.max(cursor, interval.end());
+        VisiblePlan plan = buildVisiblePlan(rangeStart, rangeEnd - rangeStart, merged);
+        if (!plan.usesCollapse()) {
+            return new RegionDisplayCoordinateMap(chromosome, rangeStart, rangeEnd, width,
+                    inverted, List.of(new GenomicSegment(rangeStart, rangeEnd)), merged,
+                    false, regionsRevision);
         }
-        if (cursor < rangeEnd) visible.add(new GenomicSegment(cursor, rangeEnd));
         return new RegionDisplayCoordinateMap(chromosome, rangeStart, rangeEnd, width,
-                inverted, visible, true, regionsRevision);
+                inverted, plan.segments(), merged, true, regionsRevision);
     }
 
     private static RegionDisplayCoordinateMap ordinary(String chromosome, double start, double end,
@@ -93,17 +94,14 @@ public final class RegionDisplayCoordinateMap {
         List<GenomicSegment> segments = end > start
                 ? List.of(new GenomicSegment(start, end)) : List.of();
         return new RegionDisplayCoordinateMap(
-                chromosome, start, end, width, inverted, segments, false, regionsRevision);
+                chromosome, start, end, width, inverted, segments, List.of(), false, regionsRevision);
     }
 
     private static List<GenomicSegment> merge(
-            Collection<RegionDisplayBoundarySource.Interval> intervals, double rangeStart, double rangeEnd) {
+            Collection<RegionDisplayBoundarySource.Interval> intervals) {
         if (intervals == null || intervals.isEmpty()) return List.of();
         List<GenomicSegment> sorted = intervals.stream()
-                .filter(interval -> interval.end() > rangeStart && interval.start() < rangeEnd)
-                .map(interval -> new GenomicSegment(
-                        Math.max(rangeStart, interval.start()),
-                        Math.min(rangeEnd, interval.end())))
+                .map(interval -> new GenomicSegment(interval.start(), interval.end()))
                 .filter(interval -> interval.end() > interval.start())
                 .sorted(Comparator.comparingDouble(GenomicSegment::start))
                 .toList();
@@ -125,6 +123,34 @@ public final class RegionDisplayCoordinateMap {
         return merged;
     }
 
+    private static VisiblePlan buildVisiblePlan(double rangeStart, double displaySpan,
+                                                List<GenomicSegment> collapsed) {
+        List<GenomicSegment> visible = new ArrayList<>();
+        double cursor = rangeStart;
+        double remaining = Math.max(0, displaySpan);
+        boolean usesCollapse = false;
+        for (GenomicSegment interval : collapsed) {
+            if (remaining <= 0) break;
+            if (interval.end() <= cursor) continue;
+            if (interval.start() > cursor) {
+                double length = Math.min(remaining, interval.start() - cursor);
+                if (length > 0) visible.add(new GenomicSegment(cursor, cursor + length));
+                cursor += length;
+                remaining -= length;
+                if (remaining <= 0) break;
+            }
+            if (interval.start() <= cursor && interval.end() > cursor) {
+                cursor = interval.end();
+                usesCollapse = true;
+            }
+        }
+        if (remaining > 0) visible.add(new GenomicSegment(cursor, cursor + remaining));
+        return new VisiblePlan(List.copyOf(visible), usesCollapse);
+    }
+
+    private record VisiblePlan(List<GenomicSegment> segments, boolean usesCollapse) {
+    }
+
     public boolean matches(ReferenceFrame frame) {
         long currentRevision = IGV.hasInstance()
                 ? IGV.getInstance().getSession().getRegionsOfInterestRevision() : -1;
@@ -144,6 +170,15 @@ public final class RegionDisplayCoordinateMap {
 
     public double getVisibleSpan() {
         return visibleSpan;
+    }
+
+    public double getGenomicRenderStart() {
+        return visibleSegments.isEmpty() ? rangeStart : visibleSegments.get(0).start();
+    }
+
+    public double getGenomicRenderEnd() {
+        return visibleSegments.isEmpty() ? rangeEnd
+                : visibleSegments.get(visibleSegments.size() - 1).end();
     }
 
     public int getScreenPosition(double genomicPosition) {
@@ -174,6 +209,34 @@ public final class RegionDisplayCoordinateMap {
         return visibleSegments.get(visibleSegments.size() - 1).end();
     }
 
+    /** Move by display bases, jumping over collapsed genomic intervals in either direction. */
+    public double shiftGenomicPosition(double position, double displayDelta) {
+        if (displayDelta == 0 || collapsedIntervals.isEmpty()) return position + displayDelta;
+        double cursor = position;
+        double remaining = Math.abs(displayDelta);
+        if (displayDelta > 0) {
+            for (GenomicSegment interval : collapsedIntervals) {
+                if (interval.end() <= cursor) continue;
+                if (cursor >= interval.start() && cursor < interval.end()) cursor = interval.end();
+                double distance = interval.start() - cursor;
+                if (distance >= remaining) return cursor + remaining;
+                if (distance > 0) remaining -= distance;
+                cursor = Math.max(cursor, interval.end());
+            }
+            return cursor + remaining;
+        }
+        for (int i = collapsedIntervals.size() - 1; i >= 0; i--) {
+            GenomicSegment interval = collapsedIntervals.get(i);
+            if (interval.start() >= cursor) continue;
+            if (cursor > interval.start() && cursor <= interval.end()) cursor = interval.start();
+            double distance = cursor - interval.end();
+            if (distance >= remaining) return cursor - remaining;
+            if (distance > 0) remaining -= distance;
+            cursor = Math.min(cursor, interval.start());
+        }
+        return cursor - remaining;
+    }
+
     public List<Segment> getSegments() {
         if (visibleSegments.isEmpty()) return List.of();
         List<Segment> result = new ArrayList<>(visibleSegments.size());
@@ -192,11 +255,10 @@ public final class RegionDisplayCoordinateMap {
     }
 
     public boolean isCollapsed(double genomicPosition) {
-        if (!hasCollapsedIntervals) return false;
-        for (GenomicSegment segment : visibleSegments) {
-            if (genomicPosition >= segment.start() && genomicPosition < segment.end()) return false;
+        for (GenomicSegment interval : collapsedIntervals) {
+            if (genomicPosition >= interval.start() && genomicPosition < interval.end()) return true;
         }
-        return genomicPosition >= rangeStart && genomicPosition < rangeEnd;
+        return false;
     }
 
     private int orient(double forwardPixel) {

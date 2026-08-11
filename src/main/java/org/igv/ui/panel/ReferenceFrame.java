@@ -355,20 +355,17 @@ public class ReferenceFrame {
 
 
     public void shiftOriginPixels(int delta) {
-        double shiftBP = delta * getDisplayScale();
-        setOrigin(shiftBP + origin);
+        RegionDisplayCoordinateMap coordinateMap = getRegionDisplayCoordinateMap();
+        double shiftBP = delta * getScale();
+        setOrigin(coordinateMap.shiftGenomicPosition(origin, shiftBP));
         eventBus.post(ViewChange.LocusChangeResult(this, chrName, origin, getEnd(), false));
     }
 
     public void shiftOriginPixelsPanning(int delta) {
-        double shiftBP = delta * getDisplayScale();
-        setOrigin(shiftBP + origin);
-        eventBus.post(ViewChange.LocusChangeResultPanning(this, chrName, origin, getEnd(), false));
-    }
-
-    private double getDisplayScale() {
         RegionDisplayCoordinateMap coordinateMap = getRegionDisplayCoordinateMap();
-        return coordinateMap.hasCollapsedIntervals() ? coordinateMap.getDisplayScale() : getScale();
+        double shiftBP = delta * getScale();
+        setOrigin(coordinateMap.shiftGenomicPosition(origin, shiftBP));
+        eventBus.post(ViewChange.LocusChangeResultPanning(this, chrName, origin, getEnd(), false));
     }
 
     /**
