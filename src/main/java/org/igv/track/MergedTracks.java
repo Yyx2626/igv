@@ -6,6 +6,7 @@ import org.igv.renderer.DataRange;
 import org.igv.session.SessionElement;
 import org.igv.ui.IGV;
 import org.igv.ui.action.OverlayTracksMenuAction;
+import org.igv.ui.action.RegionalTrackSettingsTransfer;
 import org.igv.ui.color.ColorUtilities;
 import org.igv.ui.panel.ReferenceFrame;
 import org.igv.util.ResourceLocator;
@@ -305,9 +306,15 @@ public class MergedTracks extends DataTrack implements ScalableTrack {
             for (Track memberTrack : getMemberTracks()) {
                 memberTrack.setOrder(order);
             }
+            RegionalTrackSettingsTransfer.TransferResult regionalTransfer =
+                    RegionalTrackSettingsTransfer.inheritCompositeSettings(
+                            this, getMemberTracks());
             IGV.getInstance().deleteTracks(List.of(this));
             IGV.getInstance().addTracks(new ArrayList<>(getMemberTracks()));
+            if (regionalTransfer.changed()) RegionalTrackSettingsTransfer.publishChanges();
             IGV.getInstance().repaint();
+            RegionalTrackSettingsTransfer.showPairModeWarning(
+                    "separating the overlay", regionalTransfer.pairModesRemoved());
         });
         return separateItem;
     }

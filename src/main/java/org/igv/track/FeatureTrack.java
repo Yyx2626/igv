@@ -574,7 +574,7 @@ public class FeatureTrack extends AbstractTrack implements IGVEventObserver {
         MouseEvent e = te.getMouseEvent();
         final ReferenceFrame referenceFrame = te.getFrame();
         if (referenceFrame != null) {
-            double location = referenceFrame.getChromosomePosition(e);
+            double location = te.getChromosomePosition();
             List<Feature> features = getAllFeaturesContaining(location, e.getY(), referenceFrame);
             return (features != null && features.size() > 0) ? features.get(0) : null;
         } else {

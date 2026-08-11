@@ -12,6 +12,7 @@ import org.igv.renderer.ErrorBarStyle;
 import org.igv.renderer.XYPlotRenderer;
 import org.igv.ui.ErrorBarStyleDialog;
 import org.igv.ui.IGV;
+import org.igv.ui.action.RegionalTrackSettingsTransfer;
 import org.igv.ui.panel.ReferenceFrame;
 import org.igv.ui.util.UIUtilities;
 import org.json.JSONArray;
@@ -27,6 +28,7 @@ import java.awt.Color;
 import java.awt.Component;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Synthetic track produced by the "Average With Error Bar" context-menu action:
@@ -58,6 +60,53 @@ public class AverageErrorBarTrack extends DataSourceTrack {
         this.errorBarType = errorBarType;
         this.naValue = naValue;
         setRendererClass(AverageErrorBarRenderer.class);
+        inheritSharedManualDataRange(memberTracks);
+        inheritSharedTrackColors(memberTracks);
+    }
+
+    /** Preserve a common explicit member scale; mixed or autoscaled inputs remain autoscaled. */
+    boolean inheritSharedManualDataRange(List<? extends Track> members) {
+        if (members == null || members.isEmpty()) return false;
+        DataRange shared = null;
+        for (Track member : members) {
+            if (member.getAutoScale()
+                    || member.getAttributeValue(AttributeManager.GROUP_AUTOSCALE) != null) {
+                return false;
+            }
+            DataRange candidate = member.getDataRange();
+            if (candidate == null) return false;
+            if (shared == null) shared = candidate;
+            else if (!sameDataRange(shared, candidate)) return false;
+        }
+        setAutoScale(false);
+        removeAttribute(AttributeManager.GROUP_AUTOSCALE);
+        setDataRange(shared.copy());
+        return true;
+    }
+
+    private static boolean sameDataRange(DataRange first, DataRange second) {
+        return Float.compare(first.getMinimum(), second.getMinimum()) == 0
+                && Float.compare(first.getBaseline(), second.getBaseline()) == 0
+                && Float.compare(first.getMaximum(), second.getMaximum()) == 0
+                && first.getType() == second.getType()
+                && first.isFlipAxis() == second.isFlipAxis()
+                && first.isDrawBaseline() == second.isDrawBaseline()
+                && Objects.equals(first.getMidlineColor(), second.getMidlineColor());
+    }
+
+    /** Inherit positive and negative colors independently when each is common to the group. */
+    void inheritSharedTrackColors(List<? extends Track> members) {
+        if (members == null || members.isEmpty()) return;
+        Color positive = members.get(0).getColor();
+        Color negative = members.get(0).getAltColor();
+        boolean samePositive = true;
+        boolean sameNegative = true;
+        for (int i = 1; i < members.size(); i++) {
+            samePositive &= Objects.equals(positive, members.get(i).getColor());
+            sameNegative &= Objects.equals(negative, members.get(i).getAltColor());
+        }
+        if (samePositive) setColor(positive);
+        if (sameNegative) setAltColor(negative);
     }
 
     @Override
@@ -194,6 +243,8 @@ public class AverageErrorBarTrack extends DataSourceTrack {
                     member.setDataRange(dataRange.copy());
                 }
             }
+            RegionalTrackSettingsTransfer.TransferResult regionalTransfer =
+                    RegionalTrackSettingsTransfer.inheritCompositeSettings(this, memberTracks);
             if (TrackPairing.isPaired(this)) {
                 TrackPairing.unpair(List.of(this), IGV.getInstance().getAllTracks());
             }
@@ -203,7 +254,10 @@ public class AverageErrorBarTrack extends DataSourceTrack {
             for (Track member : memberTracks) {
                 TrackPairing.reconcilePairingAfterRestore(member, allTracks);
             }
+            if (regionalTransfer.changed()) RegionalTrackSettingsTransfer.publishChanges();
             IGV.getInstance().repaint();
+            RegionalTrackSettingsTransfer.showPairModeWarning(
+                    "restoring the average track", regionalTransfer.pairModesRemoved());
         });
         items.add(restoreItem);
 

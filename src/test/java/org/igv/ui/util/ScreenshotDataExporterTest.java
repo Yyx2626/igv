@@ -36,5 +36,23 @@ public class ScreenshotDataExporterTest {
         assertEquals("C", ScreenshotDataExporter.sequenceValue(sequence, 100, 101, 102, Strand.POSITIVE));
         assertEquals("G", ScreenshotDataExporter.sequenceValue(sequence, 100, 101, 102, Strand.NEGATIVE));
         assertEquals(null, ScreenshotDataExporter.sequenceValue(sequence, 100, 101, 103, Strand.POSITIVE));
+        assertEquals("T", ScreenshotDataExporter.sequenceValue(
+                "A".getBytes(), 100, 100, 101, Strand.POSITIVE, true));
+    }
+
+    @Test
+    public void sourceColumnUsesCompactSelfAndPairFormats() {
+        assertEquals("chr1:840-850",
+                ScreenshotDataExporter.formatSource(null, "chr1", 840, 850));
+        assertEquals("[negative track]chr1:840-850",
+                ScreenshotDataExporter.formatSource("negative track", "chr1", 840, 850));
+    }
+
+    @Test
+    public void tsvHeadersUseUnderscoresInsideNamesAndDotsBetweenFields() {
+        assertEquals("my_track.average",
+                ScreenshotDataExporter.cleanHeader("my track.average"));
+        assertEquals("my_track.source",
+                ScreenshotDataExporter.cleanHeader("my track.source"));
     }
 }

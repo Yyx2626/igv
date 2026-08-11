@@ -104,21 +104,9 @@ public class RegionMenu extends JPopupMenu {
             add(item);
         }
 
-        JMenuItem item = new JMenuItem("Sort by value");
-        item.addActionListener(new ActionListener() {
-
-            public void actionPerformed(ActionEvent e) {
-
-                IGV.getInstance().sortByRegionScore(roi, RegionScoreType.SCORE, frame);
-                IGV.getInstance().getContentPane().repaint();
-
-            }
-        });
-        add(item);
-
         if (ScatterPlotUtils.hasPlottableTracks()) {
             addSeparator();
-            item = new JMenuItem("Scatter Plot ...");
+            JMenuItem item = new JMenuItem("Scatter Plot ...");
             item.addActionListener(new ActionListener() {
                 public void actionPerformed(ActionEvent e) {
 

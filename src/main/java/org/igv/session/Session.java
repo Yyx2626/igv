@@ -307,6 +307,22 @@ public class Session implements IGVEventObserver {
         regionsOfInterestObservable.setChangedAndNotify();
     }
 
+    /**
+     * Move an existing ROI between chromosome-indexed collections without notifying observers.
+     * The caller can combine this with other in-place edits and issue one
+     * {@link #notifyRegionsOfInterestChanged()} notification after the edit is complete.
+     */
+    public boolean moveRegionOfInterestWithoutNotification(RegionOfInterest roi, String chromosome) {
+        if (roi == null || chromosome == null || chromosome.isBlank()
+                || chromosome.equals(roi.getChr())) return false;
+        Collection<RegionOfInterest> oldList = regionsOfInterest.get(roi.getChr());
+        if (oldList == null || !oldList.remove(roi)) return false;
+        if (oldList.isEmpty()) regionsOfInterest.remove(roi.getChr());
+        roi.setChr(chromosome);
+        regionsOfInterest.computeIfAbsent(chromosome, ignored -> new ArrayList<>()).add(roi);
+        return true;
+    }
+
     public void clearRegionsOfInterest() {
         if (regionsOfInterest != null) {
             regionsOfInterest.clear();

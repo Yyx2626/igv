@@ -57,6 +57,10 @@ public class RegionOfInterest{
         return chr;
     }
 
+    public void setChr(String chr) {
+        this.chr = chr;
+    }
+
     public String getId() {
         return id;
     }

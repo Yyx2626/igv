@@ -31,6 +31,8 @@ import org.igv.ui.HeatmapScaleDialog;
 import org.igv.ui.IGV;
 import org.igv.ui.PairedDataRangeDialog;
 import org.igv.ui.action.AverageErrorBarMenuAction;
+import org.igv.ui.action.OverlayTracksMenuAction;
+import org.igv.ui.action.RegionalTrackSettingsTransfer;
 import org.igv.ui.color.ColorUtilities;
 import org.igv.ui.panel.FrameManager;
 import org.igv.ui.panel.IGVPopupMenu;
@@ -133,10 +135,7 @@ public class TrackMenuUtils {
                     if (dataTrackList.size() > 1) {
                         final JMenuItem item = new JMenuItem("Overlay Tracks");
                         item.addActionListener(e -> {
-                            MergedTracks mergedTracks = new MergedTracks(UUID.randomUUID().toString(), "Merged Tracks", dataTrackList);
-                            mergedTracks.setOrder(dataTrackList.get(0).getOrder());
-                            IGV.getInstance().removeTracks(dataTrackList);
-                            IGV.getInstance().addTracks(List.of(mergedTracks));
+                            OverlayTracksMenuAction.merge(dataTrackList, "Merged Tracks", true);
                             IGV.getInstance().repaint();
                         });
                         multiMenu.addSeparator();
@@ -532,6 +531,8 @@ public class TrackMenuUtils {
         JMenuItem restoreItem = new JMenuItem(avgTracks.size() > 1 ? "Restore Original Tracks (each)" : "Restore Original Tracks");
         restoreItem.addActionListener(e -> {
             List<Track> allRestoredMembers = new ArrayList<>();
+            boolean regionalSettingsChanged = false;
+            Set<RegionOfInterest> removedPairModes = new LinkedHashSet<>();
             for (AverageErrorBarTrack avgTrack : avgTracks) {
                 // See the matching comments in AverageErrorBarTrack's own "Restore Original
                 // Tracks" handler / MainPanel.computeOrderForCurrentPosition().
@@ -552,6 +553,10 @@ public class TrackMenuUtils {
                         member.setDataRange(dataRange.copy());
                     }
                 }
+                RegionalTrackSettingsTransfer.TransferResult regionalTransfer =
+                        RegionalTrackSettingsTransfer.inheritCompositeSettings(avgTrack, members);
+                regionalSettingsChanged |= regionalTransfer.changed();
+                removedPairModes.addAll(regionalTransfer.pairModesRemoved());
                 if (TrackPairing.isPaired(avgTrack)) {
                     TrackPairing.unpair(List.of(avgTrack), IGV.getInstance().getAllTracks());
                 }
@@ -567,7 +572,10 @@ public class TrackMenuUtils {
             for (Track member : allRestoredMembers) {
                 TrackPairing.reconcilePairingAfterRestore(member, allTracks);
             }
+            if (regionalSettingsChanged) RegionalTrackSettingsTransfer.publishChanges();
             IGV.getInstance().repaint();
+            RegionalTrackSettingsTransfer.showPairModeWarning(
+                    "restoring average tracks", removedPairModes);
         });
         items.add(restoreItem);
 

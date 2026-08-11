@@ -8,6 +8,7 @@ import org.igv.track.TrackPairing;
 import org.igv.track.WindowFunction;
 import org.igv.ui.IGV;
 
+import javax.swing.JOptionPane;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -43,16 +44,33 @@ public class AverageErrorBarMenuAction {
         List<DataTrack> topGroup = filterDataTracks(partition.top);
         List<DataTrack> bottomGroup = filterDataTracks(partition.bottom);
 
+        List<RegionalTrackSettingsTransfer.InputGroup> inputGroups = new ArrayList<>();
+        inputGroups.add(new RegionalTrackSettingsTransfer.InputGroup(
+                bottomGroup.isEmpty() ? "Average" : "Top", topGroup));
+        if (!bottomGroup.isEmpty()) {
+            inputGroups.add(new RegionalTrackSettingsTransfer.InputGroup("Bottom", bottomGroup));
+        }
+        RegionalTrackSettingsTransfer.PreparationResult preparation =
+                RegionalTrackSettingsTransfer.prepareCombination("average", inputGroups, true);
+        if (!preparation.proceed()) return;
+
         List<Track> newTracks = new ArrayList<>();
+        boolean regionalSettingsChanged = preparation.resetConflicts();
         AverageErrorBarTrack topAvg = null;
         AverageErrorBarTrack bottomAvg = null;
         if (!topGroup.isEmpty()) {
             topAvg = new AverageErrorBarTrack(UUID.randomUUID().toString(), "Average", topGroup, windowFunction, errorBarType, naValue);
+            RegionalTrackSettingsTransfer.TransferResult transfer =
+                    RegionalTrackSettingsTransfer.inheritMatchingSettings(topGroup, topAvg, true);
+            regionalSettingsChanged |= transfer.changed();
             newTracks.add(topAvg);
         }
         if (!bottomGroup.isEmpty()) {
             String name = topAvg != null ? "Average (Bottom)" : "Average";
             bottomAvg = new AverageErrorBarTrack(UUID.randomUUID().toString(), name, bottomGroup, windowFunction, errorBarType, naValue);
+            RegionalTrackSettingsTransfer.TransferResult transfer =
+                    RegionalTrackSettingsTransfer.inheritMatchingSettings(bottomGroup, bottomAvg, true);
+            regionalSettingsChanged |= transfer.changed();
             newTracks.add(bottomAvg);
         }
         if (newTracks.isEmpty()) {
@@ -66,7 +84,14 @@ public class AverageErrorBarMenuAction {
         if (topAvg != null && bottomAvg != null) {
             TrackPairing.pair(topAvg, bottomAvg);
         }
+        if (regionalSettingsChanged) RegionalTrackSettingsTransfer.publishChanges();
         IGV.getInstance().repaint();
+        if (preparation.resetConflicts()) {
+            JOptionPane.showMessageDialog(IGV.getInstance().getMainFrame(),
+                    "The conflicting member-track regional settings were reset and the average track was created.\n"
+                            + "Please review the resulting Regional Settings before relying on the display.",
+                    "Review Regional Settings", JOptionPane.INFORMATION_MESSAGE);
+        }
     }
 
     private static List<DataTrack> filterDataTracks(List<Track> tracks) {

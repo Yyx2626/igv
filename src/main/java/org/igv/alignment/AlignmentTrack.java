@@ -877,7 +877,7 @@ public class AlignmentTrack extends AbstractTrack implements IGVEventObserver {
     Alignment getAlignmentAt(final TrackClickEvent te) {
         MouseEvent e = te.getMouseEvent();
         final ReferenceFrame frame = te.getFrame();
-        return frame == null ? null : getAlignmentAt(frame.getChromosomePosition(e), e.getY(), frame);
+        return frame == null ? null : getAlignmentAt(te.getChromosomePosition(), e.getY(), frame);
     }
 
     Alignment getAlignmentAt(double position, int y, ReferenceFrame frame) {

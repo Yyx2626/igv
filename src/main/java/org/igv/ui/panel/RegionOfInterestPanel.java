@@ -6,6 +6,8 @@ import org.igv.util.blat.BlatClient;
 import org.igv.feature.RegionOfInterest;
 import org.igv.feature.genome.Genome;
 import org.igv.feature.genome.GenomeManager;
+import org.igv.seg.SegTrack;
+import org.igv.track.RegionScoreType;
 import org.igv.ui.IGV;
 import org.igv.util.LongRunningTask;
 import org.igv.util.NamedRunnable;
@@ -203,6 +205,15 @@ public class RegionOfInterestPanel extends JPanel {
         }
         popupMenu.add(item);
 
+        if (IGV.getInstance().getAllTracks().stream().anyMatch(SegTrack.class::isInstance)) {
+            item = new JMenuItem("Sort SEG Track by Value");
+            item.addActionListener(e -> {
+                IGV.getInstance().sortByRegionScore(roi, RegionScoreType.SCORE, frame);
+                IGV.getInstance().getContentPane().repaint();
+            });
+            popupMenu.add(item);
+        }
+
 
         popupMenu.add(new JSeparator());
 
@@ -214,6 +225,29 @@ public class RegionOfInterestPanel extends JPanel {
         popupMenu.add(item);
 
         return popupMenu;
+    }
+
+    private JPopupMenu getEmptyRegionPopupMenu() {
+        JPopupMenu menu = new JPopupMenu();
+        JMenuItem add = new JMenuItem("Add Region by Current Selection");
+        String chromosome = frame.getChrName();
+        add.setEnabled(!FrameManager.isGeneListMode() && chromosome != null
+                && !chromosome.isBlank() && !Globals.CHR_ALL.equals(chromosome));
+        add.addActionListener(event -> {
+            var range = frame.getCurrentRange();
+            IGV.getInstance().addRegionOfInterest(new RegionOfInterest(
+                    range.getChr(), range.getStart(), range.getEnd(), ""));
+        });
+        menu.add(add);
+
+        JMenuItem navigator = new JMenuItem("Region Navigator...");
+        navigator.addActionListener(event -> {
+            RegionNavigatorDialog dialog = RegionNavigatorDialog.getOrCreateInstance(
+                    IGV.getInstance().getMainFrame());
+            dialog.setVisible(true);
+        });
+        menu.add(navigator);
+        return menu;
     }
 
 
@@ -315,10 +349,14 @@ public class RegionOfInterestPanel extends JPanel {
 
         private void showPopup(MouseEvent e) {
 
+            if (!e.isPopupTrigger() && !SwingUtilities.isRightMouseButton(e)) return;
+
             RegionOfInterest roi = getRegionOfInterest(e.getX());
             if (roi != null) {
 
                 getPopupMenu(RegionOfInterestPanel.this, roi, frame).show(e.getComponent(), e.getX(), e.getY());
+            } else {
+                getEmptyRegionPopupMenu().show(e.getComponent(), e.getX(), e.getY());
             }
 
         }

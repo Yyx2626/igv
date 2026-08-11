@@ -1151,6 +1151,13 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
                 IGV.getInstance().getSession().getRegionsOfInterest(frame.getChrName());
         if (regions == null || regions.isEmpty()) return position;
 
+        Double inversionSum = regionalInversionSumAt(position, track.getId(), regions);
+        if (inversionSum == null) return position;
+        RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
+        if (!coordinateMap.hasCollapsedIntervals()) {
+            return inversionSum - position;
+        }
+
         RegionOfInterest selected = null;
         int selectedPriority = Integer.MIN_VALUE;
         for (RegionOfInterest region : regions) {
@@ -1165,7 +1172,6 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         if (selected == null) return position;
         double visibleStart = Math.max(frame.getOrigin(), selected.getStart());
         double visibleEnd = Math.min(frame.getEnd(), selected.getEnd());
-        RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
         for (RegionDisplayCoordinateMap.Segment segment : coordinateMap.getSegments()) {
             if (position >= segment.genomicStart() && position <= segment.genomicEnd()) {
                 visibleStart = Math.max(visibleStart, segment.genomicStart());
@@ -1175,6 +1181,28 @@ public class DataPanel extends JComponent implements Paintable, IGVEventObserver
         }
         double reversed = visibleStart + visibleEnd - position;
         return Math.max(visibleStart, Math.min(Math.nextDown(visibleEnd), reversed));
+    }
+
+    /** Fixed reflection axis used by regional rendering at a genomic position. */
+    static Double regionalInversionSumAt(double position, String trackId,
+                                         Collection<RegionOfInterest> regions) {
+        if (trackId == null || regions == null || regions.isEmpty()) return null;
+        List<RegionOfInterest> covering = regions.stream()
+                .filter(region -> region.getStart() <= position && region.getEnd() > position)
+                .filter(region -> region.getDisplayRule() != null
+                        && !region.getDisplayRule().isCollapsed())
+                .sorted(Comparator.comparingInt(region -> region.getDisplayRule().getPriority()))
+                .toList();
+        boolean reversed = false;
+        double offset = 0;
+        for (RegionOfInterest region : covering) {
+            TrackRegionOverride override = region.getDisplayRule().getTrackOverride(trackId);
+            if (override != null && override.isReverseX()) {
+                reversed = !reversed;
+                offset = region.getStart() + (double) region.getEnd() - offset;
+            }
+        }
+        return reversed ? offset : null;
     }
 
     /**

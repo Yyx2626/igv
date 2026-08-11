@@ -42,7 +42,7 @@ public class SelectableFeatureTrack extends FeatureTrack {
         boolean foundExon = false;
         if (f != null && f instanceof IGVFeature) {
             selectedFeature = (IGVFeature) f;
-            double location = te.getFrame().getChromosomePosition(e);
+            double location = te.getChromosomePosition();
             if (selectedFeature.getExons() != null) {
                 for (Exon exon : selectedFeature.getExons()) {
                     if (location >= exon.getStart() && location < exon.getEnd()) {
@@ -68,4 +68,3 @@ public class SelectableFeatureTrack extends FeatureTrack {
         return selectedExons;
     }
 }
-

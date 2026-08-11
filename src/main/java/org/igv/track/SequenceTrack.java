@@ -9,7 +9,10 @@ import org.igv.event.IGVEventObserver;
 import org.igv.feature.aa.AminoAcidManager;
 import org.igv.feature.aa.AminoAcidSequence;
 import org.igv.feature.Chromosome;
+import org.igv.feature.RegionDisplayRule;
+import org.igv.feature.RegionOfInterest;
 import org.igv.feature.Strand;
+import org.igv.feature.TrackRegionOverride;
 import org.igv.feature.aa.CodonTable;
 import org.igv.feature.aa.CodonTableManager;
 import org.igv.feature.genome.Genome;
@@ -23,6 +26,7 @@ import org.igv.ui.IGV;
 import org.igv.ui.panel.FrameManager;
 import org.igv.ui.panel.IGVPopupMenu;
 import org.igv.ui.panel.ReferenceFrame;
+import org.igv.ui.panel.RegionDisplayCoordinateMap;
 import org.igv.ui.util.UIUtilities;
 import org.w3c.dom.Element;
 
@@ -47,7 +51,7 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
 
     private static String NAME = "Sequence";
 
-    private Map<String, LoadedDataInterval<SeqCache>> loadedIntervalCache = new HashMap(200);
+    private Map<String, List<LoadedDataInterval<SeqCache>>> loadedIntervalCache = new HashMap<>(200);
 
     private SequenceRenderer sequenceRenderer = new SequenceRenderer();
 
@@ -119,7 +123,8 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
         if (event instanceof FrameManager.ChangeEvent) {
             // Remove cache for discarded frames.  This seems a rather round-about way to do it.
             Collection<ReferenceFrame> frames = ((FrameManager.ChangeEvent) event).frames();
-            Map<String, LoadedDataInterval<SeqCache>> newCache = Collections.synchronizedMap(new HashMap<>());
+            Map<String, List<LoadedDataInterval<SeqCache>>> newCache =
+                    Collections.synchronizedMap(new HashMap<>());
             for (ReferenceFrame f : frames) {
                 newCache.put(f.getName(), loadedIntervalCache.get(f.getName()));
             }
@@ -131,12 +136,15 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
     }
 
     private void refreshAminoAcids(CodonTable codonTable) {
-        for (LoadedDataInterval<SeqCache> i : loadedIntervalCache.values()) {
-            CodonTable intervalCodonTable = codonTable != null ?
-                    codonTable :
-                    CodonTableManager.getInstance().getCodonTableForChromosome(i.range.chr);
-            if (intervalCodonTable != null) {
-                i.getFeatures().refreshAminoAcids(intervalCodonTable);
+        for (List<LoadedDataInterval<SeqCache>> intervals : loadedIntervalCache.values()) {
+            if (intervals == null) continue;
+            for (LoadedDataInterval<SeqCache> i : intervals) {
+                CodonTable intervalCodonTable = codonTable != null ?
+                        codonTable :
+                        CodonTableManager.getInstance().getCodonTableForChromosome(i.range.chr);
+                if (intervalCodonTable != null) {
+                    i.getFeatures().refreshAminoAcids(intervalCodonTable);
+                }
             }
         }
     }
@@ -193,9 +201,10 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
         if (!visible) {
             return true; // Nothing to paint
         } else {
-            LoadedDataInterval<SeqCache> interval = loadedIntervalCache.get(frame.getName());
-            boolean ready = interval != null && interval.contains(frame);
-            return ready;
+            List<LoadedDataInterval<SeqCache>> loaded = loadedIntervalCache.get(frame.getName());
+            return loaded != null && requiredIntervals(frame).stream().allMatch(required ->
+                    loaded.stream().anyMatch(interval -> interval.contains(
+                            frame.getChrName(), required.start(), required.end())));
         }
     }
 
@@ -205,26 +214,30 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
         final Genome currentGenome = GenomeManager.getInstance().getCurrentGenome();
         String chr = currentGenome.getCanonicalChrName(referenceFrame.getChrName());
 
-        int start = (int) referenceFrame.getOrigin();
-
         Chromosome chromosome = currentGenome.getChromosome(chr);
         if (chromosome == null) {
             return;
         }
 
-        final int chromosomeLength = chromosome.getLength();
+        int chromosomeLength = chromosome.getLength();
+        List<LoadedDataInterval<SeqCache>> loaded = new ArrayList<>();
+        for (IntRange required : requiredIntervals(referenceFrame)) {
+            LoadedDataInterval<SeqCache> interval = loadInterval(
+                    currentGenome, chr, required.start(), required.end(), chromosomeLength);
+            if (interval != null) loaded.add(interval);
+        }
+        loadedIntervalCache.put(referenceFrame.getName(), loaded);
+    }
 
-        int end = (int) referenceFrame.getEnd();
-        int w = end - start;
-
-        // Expand a bit for panning and AA caluclation
-        start = Math.max(0, start - w / 2 + 2);
-        end = Math.min(end + w / 2 + 2, chromosomeLength);
-
-        Genome genome = currentGenome;
-        byte [] seqBytes = genome.getSequence(chr, start, end);
+    private LoadedDataInterval<SeqCache> loadInterval(Genome genome, String chr,
+                                                       int requestedStart, int requestedEnd,
+                                                       int chromosomeLength) {
+        int width = Math.max(1, requestedEnd - requestedStart);
+        int start = Math.max(0, requestedStart - width / 2 + 2);
+        int end = Math.min(requestedEnd + width / 2 + 2, chromosomeLength);
+        byte[] seqBytes = genome.getSequence(chr, start, end);
         if(seqBytes == null) {
-            return;
+            return null;
 
         }
         String sequence = new String(seqBytes);
@@ -246,7 +259,100 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
 
         CodonTable codonTable = CodonTableManager.getInstance().getCodonTableForChromosome(chr);
         cache.refreshAminoAcids(codonTable);
-        loadedIntervalCache.put(referenceFrame.getName(), new LoadedDataInterval<>(chr, start, end, cache));
+        return new LoadedDataInterval<>(chr, start, end, cache);
+    }
+
+    private List<IntRange> requiredIntervals(ReferenceFrame frame) {
+        RegionDisplayCoordinateMap displayMap = frame.getRegionDisplayCoordinateMap();
+        List<IntRange> required = new ArrayList<>();
+        required.add(new IntRange(
+                Math.max(0, (int) Math.floor(displayMap.getGenomicRenderStart())),
+                Math.max(1, (int) Math.ceil(displayMap.getGenomicRenderEnd()))));
+
+        if (IGV.hasInstance()) {
+            Collection<RegionOfInterest> regions =
+                    IGV.getInstance().getSession().getRegionsOfInterest(frame.getChrName());
+            if (regions != null) {
+                double viewportStart = frame.getOrigin();
+                double viewportEnd = frame.getEnd();
+                required.addAll(requiredRegionalSourceIntervals(
+                        regions, getId(), viewportStart, viewportEnd));
+            }
+        }
+        return mergeRanges(required);
+    }
+
+    static List<IntRange> requiredRegionalSourceIntervals(Collection<RegionOfInterest> allRegions,
+                                                          String trackId,
+                                                          double viewportStart,
+                                                          double viewportEnd) {
+        List<RegionOfInterest> invertedRegions = allRegions.stream()
+                .filter(region -> region.getDisplayRule() != null
+                        && !region.getDisplayRule().isCollapsed()
+                        && region.getEnd() > viewportStart && region.getStart() < viewportEnd)
+                .filter(region -> {
+                    TrackRegionOverride override = region.getDisplayRule().getTrackOverride(trackId);
+                    return override != null && override.isReverseX();
+                })
+                .sorted(Comparator.comparingInt(region -> region.getDisplayRule().getPriority()))
+                .toList();
+        if (invertedRegions.isEmpty()) return List.of();
+
+        List<Double> boundaries = new ArrayList<>();
+        boundaries.add(viewportStart);
+        boundaries.add(viewportEnd);
+        for (RegionOfInterest region : invertedRegions) {
+            boundaries.add(Math.max(viewportStart, (double) region.getStart()));
+            boundaries.add(Math.min(viewportEnd, (double) region.getEnd()));
+        }
+        boundaries = boundaries.stream().distinct().sorted().toList();
+
+        List<IntRange> required = new ArrayList<>();
+        for (int i = 0; i + 1 < boundaries.size(); i++) {
+            double targetStart = boundaries.get(i);
+            double targetEnd = boundaries.get(i + 1);
+            if (targetEnd <= targetStart) continue;
+            double midpoint = targetStart + (targetEnd - targetStart) / 2.0;
+            boolean reversed = false;
+            double inversionSum = 0;
+            for (RegionOfInterest region : invertedRegions) {
+                if (region.getStart() <= midpoint && region.getEnd() > midpoint) {
+                    reversed = !reversed;
+                    inversionSum = region.getStart() + (double) region.getEnd() - inversionSum;
+                }
+            }
+            if (reversed) {
+                required.add(new IntRange(
+                        Math.max(0, (int) Math.floor(inversionSum - targetEnd)),
+                        Math.max(1, (int) Math.ceil(inversionSum - targetStart))));
+            }
+        }
+        return required;
+    }
+
+    static List<IntRange> mergeRanges(List<IntRange> ranges) {
+        List<IntRange> sorted = ranges.stream()
+                .filter(range -> range.end() > range.start())
+                .sorted(Comparator.comparingInt(IntRange::start)).toList();
+        if (sorted.isEmpty()) return List.of();
+        List<IntRange> merged = new ArrayList<>();
+        int start = sorted.get(0).start();
+        int end = sorted.get(0).end();
+        for (int i = 1; i < sorted.size(); i++) {
+            IntRange next = sorted.get(i);
+            if (next.start() <= end) {
+                end = Math.max(end, next.end());
+            } else {
+                merged.add(new IntRange(start, end));
+                start = next.start();
+                end = next.end();
+            }
+        }
+        merged.add(new IntRange(start, end));
+        return merged;
+    }
+
+    record IntRange(int start, int end) {
     }
 
     private static int normalize3(int n) {
@@ -266,12 +372,24 @@ public class SequenceTrack extends AbstractTrack implements IGVEventObserver {
         final String frameName = context.getReferenceFrame().getName();
 
         if (visible) {
-            LoadedDataInterval<SeqCache> sequenceInterval = loadedIntervalCache.get(frameName);
+            List<LoadedDataInterval<SeqCache>> intervals = loadedIntervalCache.get(frameName);
+            int renderStart = (int) Math.floor(context.getOrigin());
+            int renderEnd = (int) Math.ceil(context.getEndLocation());
+            LoadedDataInterval<SeqCache> sequenceInterval = intervals == null ? null : intervals.stream()
+                    .filter(interval -> interval.contains(context.getChr(), renderStart, renderEnd))
+                    .findFirst().orElse(null);
             if (sequenceInterval != null) {
-                sequenceRenderer.setStrand(strand);
+                TrackRegionOverride override = context.getRegionOverride();
+                sequenceRenderer.setStrand(effectiveRenderStrand(
+                        strand, override != null && override.isReverseX()));
                 sequenceRenderer.draw(sequenceInterval, context, context.getTrackRectangle(), showTranslation, resolutionThreshold);
             }
         }
+    }
+
+    static Strand effectiveRenderStrand(Strand selectedStrand, boolean regionInverted) {
+        if (!regionInverted) return selectedStrand;
+        return selectedStrand == Strand.NEGATIVE ? Strand.POSITIVE : Strand.NEGATIVE;
     }
 
     /**

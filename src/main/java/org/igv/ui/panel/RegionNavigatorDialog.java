@@ -108,7 +108,11 @@ public class RegionNavigatorDialog extends org.igv.ui.IGVDialog implements Obser
         table.setRowSorter(sorter);
         table.setAutoResizeMode(JTable.AUTO_RESIZE_LAST_COLUMN);
         table.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        table.setForeground(Color.BLACK);
+        table.setSelectionForeground(Color.BLACK);
+        table.getTableHeader().setForeground(Color.BLACK);
         table.setDefaultRenderer(RegionalSettingsValue.class, new SettingsRenderer());
+        table.setDefaultRenderer(String.class, new TextRenderer());
         table.setDefaultRenderer(Integer.class, new CoordinateRenderer());
         int[] widths = {65, 95, 95, 180, 155};
         for (int i = 0; i < widths.length; i++) table.getColumnModel().getColumn(i).setPreferredWidth(widths[i]);
@@ -247,6 +251,7 @@ public class RegionNavigatorDialog extends org.igv.ui.IGVDialog implements Obser
             return;
         }
         IGV.getInstance().getSession().removeRegionsOfInterest(selected);
+        IGV.getInstance().repaint();
     }
 
     private List<RegionOfInterest> selectedRegions() {
@@ -368,6 +373,25 @@ public class RegionNavigatorDialog extends org.igv.ui.IGVDialog implements Obser
             changed = true;
         }
         if (!region.hasActiveDisplayRule()) {
+            Object chromosomeValue = model.getValueAt(row, COL_CHR);
+            String requestedChromosome = chromosomeValue == null ? "" : chromosomeValue.toString().trim();
+            var genome = GenomeManager.getInstance().getCurrentGenome();
+            String canonicalChromosome = genome == null || requestedChromosome.isEmpty()
+                    ? requestedChromosome : genome.getCanonicalChrName(requestedChromosome);
+            boolean validChromosome = !canonicalChromosome.isEmpty()
+                    && (genome == null || genome.getChromosome(canonicalChromosome) != null);
+            if (!validChromosome) {
+                synchronizing = true;
+                try {
+                    model.setValueAt(region.getChr(), row, COL_CHR);
+                } finally {
+                    synchronizing = false;
+                }
+                Toolkit.getDefaultToolkit().beep();
+            } else if (!canonicalChromosome.equals(region.getChr())) {
+                changed |= IGV.getInstance().getSession()
+                        .moveRegionOfInterestWithoutNotification(region, canonicalChromosome);
+            }
             Object start = model.getValueAt(row, COL_START);
             Object end = model.getValueAt(row, COL_END);
             if (start instanceof Number && end instanceof Number) {
@@ -401,7 +425,7 @@ public class RegionNavigatorDialog extends org.igv.ui.IGVDialog implements Obser
 
         @Override
         public boolean isCellEditable(int row, int column) {
-            if (column == COL_CHR || column == COL_SETTINGS) return false;
+            if (column == COL_SETTINGS) return false;
             RegionOfInterest region = regionAtModelRow(row);
             return column == COL_DESCRIPTION || region == null || !region.hasActiveDisplayRule();
         }
@@ -427,10 +451,11 @@ public class RegionNavigatorDialog extends org.igv.ui.IGVDialog implements Obser
         public Component getTableCellRendererComponent(JTable table, Object value, boolean selected,
                                                        boolean focused, int row, int column) {
             JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, selected, focused, row, column);
+            label.setForeground(Color.BLACK);
             label.setHorizontalAlignment(CENTER);
             label.setBorder(BorderFactory.createCompoundBorder(
                     BorderFactory.createEmptyBorder(2, 4, 2, 4),
-                    BorderFactory.createLineBorder(selected ? table.getSelectionForeground() : Color.GRAY)));
+                    BorderFactory.createLineBorder(Color.BLACK)));
             label.setToolTipText("Click to edit all regional display settings");
             return label;
         }
@@ -443,9 +468,28 @@ public class RegionNavigatorDialog extends org.igv.ui.IGVDialog implements Obser
             JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, selected, focused, row, column);
             RegionOfInterest region = regionAtModelRow(table.convertRowIndexToModel(row));
             boolean locked = region != null && region.hasActiveDisplayRule();
-            if (locked && !selected) label.setForeground(UIManager.getColor("Label.disabledForeground"));
+            label.setForeground(locked && !selected
+                    ? UIManager.getColor("Label.disabledForeground") : Color.BLACK);
             label.setToolTipText(locked
                     ? "Reset regional settings before changing this boundary." : null);
+            return label;
+        }
+    }
+
+    private final class TextRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value, boolean selected,
+                                                       boolean focused, int row, int column) {
+            JLabel label = (JLabel) super.getTableCellRendererComponent(
+                    table, value, selected, focused, row, column);
+            RegionOfInterest region = regionAtModelRow(table.convertRowIndexToModel(row));
+            int modelColumn = table.convertColumnIndexToModel(column);
+            boolean lockedChromosome = modelColumn == COL_CHR
+                    && region != null && region.hasActiveDisplayRule();
+            label.setForeground(lockedChromosome && !selected
+                    ? UIManager.getColor("Label.disabledForeground") : Color.BLACK);
+            label.setToolTipText(lockedChromosome
+                    ? "Reset regional settings before changing this chromosome." : null);
             return label;
         }
     }

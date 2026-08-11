@@ -38,6 +38,37 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
   navigation now keeps the original bp-per-pixel scale, fills from genomic data
   beyond the deleted interval, and skips collapsed coordinates during panning
   instead of dynamically squeezing the remaining viewport.
+- Added one final screen-space collision pass for collected annotation labels, so
+  labels originating on opposite sides of a regional boundary no longer overlap.
+- Renamed the ROI sort command to **Sort SEG Track by Value**, placed it below
+  BLAT, and hide it when no SEG track is loaded. Sequence and three-frame
+  translation rendering now load every disjoint genomic source interval needed
+  by regional coordinate inversion, including partially visible and nested ROIs.
+- Made region-inverted sequence content biologically reverse-complemented and
+  switched its three-frame translation to the corresponding opposite strand.
+  Screenshot TSV now keeps `chr/start/end` as the common screen-bin key, adds
+  compact source columns only for regionally transformed tracks, obtains pair
+  values from the partner track, follows the extended post-collapse viewport,
+  and records collapsed intervals in a `bin_note` metadata row.
+- Standardized screenshot TSV headers to underscore-normalized track names and
+  dot-separated fields. Average With Error Bar now validates regional settings
+  within each output group, inherits matching overrides, and offers an explicit
+  reset-and-continue path for conflicts. Empty ROI-bar space now offers Add Region
+  and Region Navigator actions; Navigator chromosome cells are editable while
+  regional settings are inactive and its adjustable table text renders black.
+- Unified regional-setting transfer for composite numeric tracks. Average restore
+  and Overlay separation now copy the composite track's current per-region settings
+  back to individual members and remove the deleted composite override; Overlay
+  creation also validates and inherits matching member settings. Regional Pair
+  Swap/Pair Flip is intentionally omitted when individual pair relationships are
+  ambiguous, with a warning only when such a pair mode was actually present.
+- Repainted the main IGV view immediately after Region Navigator removes an ROI,
+  preventing a stale region bar from remaining until the next mouse hover.
+- Preserved a common manually configured Data Range and matching positive/negative
+  track colors when creating each Average With Error Bar output group. Click and
+  feature-selection coordinates inside
+  inverted regions now use the same fixed ROI reflection axis as rendering,
+  including partially visible and nested inverted regions.
 
 ## August 10, 2026
 

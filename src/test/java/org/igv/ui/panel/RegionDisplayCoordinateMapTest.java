@@ -1,6 +1,9 @@
 package org.igv.ui.panel;
 
 import org.igv.feature.RegionDisplayBoundarySource;
+import org.igv.feature.RegionDisplayRule;
+import org.igv.feature.RegionOfInterest;
+import org.igv.feature.TrackRegionOverride;
 import org.junit.Test;
 
 import java.util.List;
@@ -24,6 +27,39 @@ public class RegionDisplayCoordinateMapTest {
                 DataPanel.invertedSourceInterval(120, 180, 300), 0.0);
         assertArrayEquals(new double[]{110, 170},
                 DataPanel.invertedSourceInterval(130, 190, 300), 0.0);
+    }
+
+    @Test
+    public void clickMappingUsesTheFixedRoiAxisWhenRegionIsPartlyVisible() {
+        RegionOfInterest region = invertedRegion(100, 200, 1, "track");
+
+        assertEquals(300, DataPanel.regionalInversionSumAt(
+                175, "track", List.of(region)), 0);
+        assertEquals(125, DataPanel.regionalInversionSumAt(
+                175, "track", List.of(region)) - 175, 0);
+    }
+
+    @Test
+    public void nestedSecondInversionRestoresClickOrientation() {
+        RegionOfInterest outer = invertedRegion(100, 300, 1, "track");
+        RegionOfInterest inner = invertedRegion(150, 200, 2, "track");
+
+        assertEquals(400, DataPanel.regionalInversionSumAt(
+                125, "track", List.of(outer, inner)), 0);
+        assertEquals(null, DataPanel.regionalInversionSumAt(
+                175, "track", List.of(outer, inner)));
+    }
+
+    private static RegionOfInterest invertedRegion(int start, int end, int priority,
+                                                    String trackId) {
+        RegionOfInterest region = new RegionOfInterest("chr1", start, end, "");
+        RegionDisplayRule rule = new RegionDisplayRule();
+        rule.setPriority(priority);
+        TrackRegionOverride override = new TrackRegionOverride();
+        override.setReverseX(true);
+        rule.setTrackOverride(trackId, override);
+        region.setDisplayRule(rule);
+        return region;
     }
 
     @Test
