@@ -45,15 +45,17 @@ For the original, unmodified IGV project, visit
 - **Publication screenshot and data export:** export PNG or SVG figures with
   optional genomic coordinates and track names, plus matching binned TSV data
   that preserves merged, average, and base-resolution sequence information.
-  Set the numeric-display and TSV bin count in Preferences > General (1500 by
-  default), reproduce viewport dimensions with View > Set IGV Window Size, and
-  reuse the last accepted screenshot path and options during the current run.
+  Manually set the numeric-display and TSV bin count in Preferences > General
+  (1500 by default) and the viewport dimensions with View > Set IGV Window Size
+  to reproduce figure layout and data resolution.
 - **Undo and redo:** recover the 20 most recent track, pairing, composite-track,
   ROI, and Regional Settings edits from the Edit menu or standard shortcuts;
   session or genome changes start a fresh history.
 
 ### Minor fixes and debugging
 
+- Made Save Screenshot remember the last accepted output path and options during
+  the current IGV run.
 - Made About IGV and terminal startup identify the exact customized build with
   version, commit, `src/main/` SHA-256, build time, and running-JAR SHA-256.
 - Fixed duplicate loading of files dropped from macOS Finder and made divider
