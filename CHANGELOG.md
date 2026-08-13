@@ -3,41 +3,28 @@
 This changelog records customization and debugging work in this fork. It does
 not duplicate routine changes made by the upstream `igvteam/igv` project.
 
-## Known issues / planned work (as of August 13, 2026)
-
-Code for these is written and compiles, but not yet fully verified/tested in
-the app or built into a release:
-
-- TSV export: add each Average track member's own raw value as extra columns
-  (`Average.source.<member name>`) so `Average.N/average/SD/SEM` can be
-  cross-checked against member data without exporting twice - done, needs
-  in-app verification.
-- TSV export: prefix every column with `track_N.` (display order among
-  exported tracks) so column identity is unambiguous - done, needs in-app
-  verification.
-
-Not yet started:
-
-- Debug: the "Set Track Height..." dialog (and Preferences > Tracks height)
-  sometimes doesn't change a track's visible height after clicking OK.
-  Suspect: `TrackPanel.getPreferredSize()`'s `Math.max(track.getHeight(),
-  track.getContentHeight())` can silently keep a track at its old (larger)
-  content height when shrinking a track whose `getContentHeight()` differs
-  from its own `height` field (composite/feature tracks) - needs a concrete
-  repro (which track type, shrink vs. enlarge) to confirm before fixing.
-- Add a "Change Border Between Pairs" context menu (Set Border Height / Set
-  Border Color / Unset) for one or more selected paired tracks, reusing the
-  existing per-track `borderHeightOverride`/`borderColorOverride` mechanism
-  already exposed via right-clicking a `TrackPanelDivider` directly - applies
-  the override to the TOP track of each pair in the selection (resolving
-  BOTTOM-selected tracks to their partner via `TrackPairing.findPartner`).
-- Debug: undoing "Add Region" (add Region of Interest) may already restore
-  the underlying model correctly, but the translucent red ROI bar on screen
-  doesn't disappear - likely a missing repaint after the undo, not a broken
-  undo action itself.
-
 ## August 13, 2026
 
+- Fixed and verified track-height changes occasionally leaving the visible
+  viewport unchanged. Layout-change detection had compared content height rather than
+  the outer viewport height. In addition, the three height fields in
+  Preferences > Tracks previously affected only tracks loaded in the future;
+  saving them now immediately resizes existing numeric, feature, and
+  interaction tracks as one undoable operation.
+- Added and verified **Change Border Between Pairs** in the track context menu
+  for selected paired tracks, with Set Height, Set Color, and Unset actions. Selecting
+  either or both members resolves to the pair's top track, whose lower divider
+  is the border physically between the pair; multi-pair selections are
+  supported and every action is undoable. The submenu appears below Unpair
+  Tracks, and a subsequent pair Flip Y-Axis preserves both the pair's internal
+  border and its lower external border at their original screen boundaries.
+- Fixed and verified Undo Add Region throwing when no ROI was currently
+  hovered: the immutable edit list rejects a null `contains` query, so the undo stopped
+  before reaching either model refresh or repaint. ROI strips now also repaint
+  immediately, independently of asynchronous track-data loading.
+- Completed and verified TSV identity columns: every exported track column is
+  prefixed by its display-order `track_N`, and Average member source columns
+  are placed before N/average/SD/SEM so the statistics can be checked directly.
 - Fixed the actual cause of error bars visibly overshooting the gray midline
   in SVG/PDF export: a near-zero-error bin's clamped span could round to less
   than a single pixel, and the old code forced 1px of visible height by
@@ -74,19 +61,21 @@ Not yet started:
   either.
 - Extended "Average With Error Bar" to support "None" windowing directly
   (member tracks keep it, rather than the average silently substituting
-  `absoluteMax`): each member's own max/min is read straight from its zoom
-  pyramid (never raw data), and bins where members disagree on sign get
-  separate positive-group and negative-group N/mean/SD/SEM statistics -
-  mirroring the plain-track envelope above, both on screen and in TSV export
-  (`.pos.N/.average/.SD/.SEM` and `.neg.*` column groups when mixed, no
-  suffix when one-signed). Fixed a real dilution bug found via this: re-binning
-  multiple native (fine-resolution) entries into one wider display/export bin
-  used an overlap-weighted average, which is correct for combining several
-  Mean-windowed entries but wrong for Max/Min-derived ones - a bin's true
-  peak was diluted toward zero by however much of the bin's width had no
-  underlying data at all (bigwig files don't store zero-coverage positions,
-  they simply omit them). Fixed by reporting the single native entry with the
-  largest-magnitude mean as-is instead of averaging toward it.
+  `absoluteMax`). The final display/TSV bin is now the sole statistical
+  boundary: each member first contributes its own non-negative maximum and/or
+  non-positive minimum from raw values inside that exact bin, using the
+  Average dialog's missing-value replacement when that member lacks one side;
+  only then are the positive and negative N/mean/SD/SEM groups calculated.
+  This also fixes bins where members peak at different positions and makes the
+  exported `source` member columns exactly reconstruct Average/SD/SEM.
+- Made final-bin aggregation exact for ordinary numeric `Mean`, `Maximum`,
+  `Minimum`, and `Absolute Maximum` display and TSV output. The previous
+  second-stage overlap-weighted averaging of bigWig zoom-record values could
+  average maxima/minima or admit a summary whose extremum lay outside a
+  partially overlapping final bin. These functions now aggregate raw values
+  within the final region-aware bin. BigWig pyramid decoding remains available
+  for contexts using its native record boundaries; it is not used where an
+  arbitrary final bin would make the result ambiguous.
 - "None" is now a session-persisted Windowing Function value on its own for
   an Average track (dialog and context menu both already labeled it "None"
   for the UI-visible option that used to be `absoluteMax` internally); saving

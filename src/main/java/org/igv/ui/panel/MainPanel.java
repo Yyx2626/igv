@@ -142,6 +142,11 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
         });
     }
 
+    /** Repaint ROI bars without waiting for asynchronous track loading. */
+    public void repaintRegionOfInterestPanels() {
+        UIUtilities.invokeAndWaitOnEventThread(headerPanelContainer::repaintRegionOfInterestPanels);
+    }
+
     public void removeHeader() {
         remove(headerScrollPane);
         trackPanelScrollPane.setBorder(null);

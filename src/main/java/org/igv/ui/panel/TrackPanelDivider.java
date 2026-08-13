@@ -58,7 +58,7 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
         return Math.max(0, PreferencesManager.getPreferences().getAsInt(Constants.TRACK_BORDER_HEIGHT));
     }
 
-    private static Color computeGlobalBorderColor() {
+    public static Color getGlobalBorderColor() {
         boolean darkMode = Globals.isDarkMode();
         IGVPreferences prefs = PreferencesManager.getPreferences();
         return darkMode && !prefs.hasExplicitValue(Constants.TRACK_BORDER_COLOR)
@@ -85,7 +85,7 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
     private Color computeBorderColor() {
         Track track = getOverrideTrack();
         Color override = track == null ? null : track.getBorderColorOverride();
-        return override != null ? override : computeGlobalBorderColor();
+        return override != null ? override : getGlobalBorderColor();
     }
 
     /**
@@ -229,7 +229,7 @@ public class TrackPanelDivider extends JPanel implements IGVEventObserver {
 
         JMenuItem setColorItem = new JMenuItem("Set Border Color...");
         setColorItem.addActionListener(evt -> {
-            Color current = track.getBorderColorOverride() != null ? track.getBorderColorOverride() : computeGlobalBorderColor();
+            Color current = track.getBorderColorOverride() != null ? track.getBorderColorOverride() : getGlobalBorderColor();
             Color newColor = UIUtilities.showColorChooserDialog("Select Border Color", current);
             if (newColor != null) {
                 IGV.getInstance().runUndoableTrackChange("Set Track Border Color", List.of(track),

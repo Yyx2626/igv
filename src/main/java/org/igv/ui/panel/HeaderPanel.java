@@ -281,6 +281,13 @@ public class HeaderPanel extends JPanel implements Transferable, Paintable, IGVE
         if (geneListPanel != null) geneListPanel.setBackground(color);
     }
 
+    /** Repaint the ROI strip immediately, independently of track-data loading. */
+    void repaintRegionOfInterestPanel() {
+        if (regionOfInterestPane != null) {
+            regionOfInterestPane.repaint();
+        }
+    }
+
 
     /**
      * <p>Returns (creating, if necessary) the DataFlavor representing RandomDragAndDropPanel</p>
@@ -522,4 +529,3 @@ public class HeaderPanel extends JPanel implements Transferable, Paintable, IGVE
     }
 
 }
-

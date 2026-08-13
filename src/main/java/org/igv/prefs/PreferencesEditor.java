@@ -4,6 +4,10 @@ import org.igv.logging.*;
 import org.igv.DirectoryManager;
 import org.igv.Globals;
 import org.igv.oauth.OAuthUtils;
+import org.igv.bedpe.InteractionTrack;
+import org.igv.track.DataTrack;
+import org.igv.track.FeatureTrack;
+import org.igv.track.Track;
 import org.igv.ui.IGV;
 import org.igv.ui.color.ColorSwatch;
 import org.igv.ui.color.ColorUtilities;
@@ -399,6 +403,10 @@ public class PreferencesEditor {
 
         PreferencesManager.updateAll(updatedPreferencesMap);
 
+        if (IGV.hasInstance()) {
+            applyTrackHeightPreferences(updatedPreferencesMap, IGV.getInstance());
+        }
+
         for (Map<String, String> map : updatedPreferencesMap.values()) {
             if (map.containsKey(PROVISIONING_URL)) {
                 try {
@@ -413,6 +421,50 @@ public class PreferencesEditor {
         if (IGV.hasInstance()) {
             IGV.getInstance().repaint();
         }
+    }
+
+    /** Apply edited default-height preferences to tracks already visible in this session. */
+    static void applyTrackHeightPreferences(Map<String, Map<String, String>> updatedPreferencesMap,
+                                            IGV igv) {
+        Map<Track, Integer> changes = resolveTrackHeightChanges(
+                updatedPreferencesMap, igv.getAllTracks());
+        if (changes.isEmpty()) return;
+
+        igv.runUndoableTrackChange("Apply Track Height Preferences", changes.keySet(),
+                () -> changes.forEach(Track::setHeight));
+        igv.revalidateTrackPanels();
+    }
+
+    static Map<Track, Integer> resolveTrackHeightChanges(
+            Map<String, Map<String, String>> updatedPreferencesMap,
+            Collection<? extends Track> tracks) {
+        Map<String, String> changed = new HashMap<>();
+        for (Map<String, String> category : updatedPreferencesMap.values()) {
+            changed.putAll(category);
+        }
+        boolean numericChanged = changed.containsKey(Constants.CHART_TRACK_HEIGHT_KEY);
+        boolean featureChanged = changed.containsKey(Constants.TRACK_HEIGHT_KEY);
+        boolean interactionChanged = changed.containsKey(Constants.INTERACT_TRACK_HEIGHT);
+        if (!numericChanged && !featureChanged && !interactionChanged) return Map.of();
+
+        int numericHeight = numericChanged
+                ? Math.max(0, Integer.parseInt(changed.get(Constants.CHART_TRACK_HEIGHT_KEY))) : 0;
+        int featureHeight = featureChanged
+                ? Math.max(0, Integer.parseInt(changed.get(Constants.TRACK_HEIGHT_KEY))) : 0;
+        int interactionHeight = interactionChanged
+                ? Math.max(0, Integer.parseInt(changed.get(Constants.INTERACT_TRACK_HEIGHT))) : 0;
+
+        Map<Track, Integer> changes = new LinkedHashMap<>();
+        for (Track track : tracks) {
+            if (numericChanged && track instanceof DataTrack) {
+                changes.put(track, numericHeight);
+            } else if (featureChanged && track instanceof FeatureTrack) {
+                changes.put(track, featureHeight);
+            } else if (interactionChanged && track instanceof InteractionTrack) {
+                changes.put(track, interactionHeight);
+            }
+        }
+        return changes;
     }
 
 

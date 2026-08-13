@@ -31,17 +31,23 @@ For the original, unmodified IGV project, visit
   track with SEM, SD, or no error bars; configure missing-value handling,
   windowing, rendering, color, cap style, and restore the original tracks.
 - **Track pairing and track groups:** pair top and bottom tracks for coordinated
-  range editing, independent autoscaling, and paired Y-axis flips; organize and
-  recall numbered track groups 1-9 with shortcuts or group-tab controls.
+  range editing, independent autoscaling, and paired Y-axis flips. Pair borders
+  can be assigned their own height and color from either member's context menu
+  and remain between the pair after a flip. Organize and recall numbered track
+  groups 1-9 with shortcuts or group-tab controls.
 - **Invert genomic coordinates:** reverse the horizontal genomic axis while
   keeping text and Y-axis labels upright; feature geometry, sequence direction,
   screenshots, TSV output, and JSON sessions follow the inverted view.
 - **Regional settings:** attach display-only rules to regions of interest to
-  collapse intervals, invert coordinates for selected tracks,
-  customize regional Y ranges and colors, and support nested transformations.
+  highlight or cover a region, collapse/delete it from the display, invert its
+  coordinates globally or for selected tracks, flip regional Y axes or paired
+  tracks, assign regional data ranges and positive/negative/background/
+  foreground colors, and support nested transformations.
 - **Customizable appearance:** control track backgrounds, borders, dividers,
   data-range mid-lines, and related global or per-track styling to prepare
-  consistent publication-quality figures.
+  consistent publication-quality figures. Saving the default numeric, feature,
+  or interaction height in Preferences > Tracks also resizes matching tracks
+  already open in the current session.
 - **Publication screenshot and data export:** export PNG or SVG figures with
   optional genomic coordinates and track names, plus matching binned TSV data
   that preserves merged, average, and base-resolution sequence information.
@@ -57,8 +63,8 @@ For the original, unmodified IGV project, visit
   baseline shows both. TSV export mirrors this with single or separate
   Pos/Neg columns depending on whether the exported range is one-signed.
 - **Undo and redo:** recover the 20 most recent track, pairing, composite-track,
-  ROI, and Regional Settings edits from the Edit menu or standard shortcuts;
-  session or genome changes start a fresh history.
+  ROI (including Add/Delete Region), and Regional Settings edits from the Edit
+  menu or standard shortcuts; session or genome changes start a fresh history.
 
 ### Minor fixes and debugging
 
@@ -101,6 +107,9 @@ For the original, unmodified IGV project, visit
   zoom pyramid instead of a raw-data fallback with mismatched query bounds
   (the root cause of wildly inflated Average-track values when members were
   left on the default "None" windowing).
+- Fixed Preferences > Tracks height changes not affecting already loaded
+  tracks, Undo Add Region failing after the mouse left the ROI bar, and paired
+  border overrides moving below the pair after Flip Y-Axis.
 
 The individual commits contain the implementation rationale and detailed bug
 causes. This branch is a customized IGV build and is not an official

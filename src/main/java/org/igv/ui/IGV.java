@@ -338,6 +338,7 @@ public class IGV implements IGVEventObserver {
     public void addRegionOfInterest(RegionOfInterest roi) {
         session.addRegionOfInterest(roi);
         RegionOfInterestPanel.setSelectedRegion(roi);
+        repaintRegionOfInterestPanels();
         repaint();
     }
 
@@ -354,13 +355,15 @@ public class IGV implements IGVEventObserver {
         List<RegionOfInterest> removed = regions.stream().filter(present::contains).toList();
         if (removed.isEmpty()) return;
         session.removeRegionsOfInterest(removed);
-        if (removed.contains(RegionOfInterestPanel.getSelectedRegion())) {
+        RegionOfInterest selected = RegionOfInterestPanel.getSelectedRegion();
+        if (selected != null && removed.contains(selected)) {
             RegionOfInterestPanel.setSelectedRegion(null);
         }
         undoManager.addEdit(new RegionCollectionEdit(this, removed, false));
         for (ReferenceFrame frame : FrameManager.getFrames()) {
             frame.refreshRegionDisplayCoordinateMap();
         }
+        repaintRegionOfInterestPanels();
         repaint();
     }
 
@@ -2095,6 +2098,11 @@ public class IGV implements IGVEventObserver {
      */
     public void repaintHeaderPanels() {
         getMainPanel().repaintHeaderPanels();
+    }
+
+    /** Repaint ROI bars immediately; a normal repaint can be deferred by track loading. */
+    public void repaintRegionOfInterestPanels() {
+        getMainPanel().repaintRegionOfInterestPanels();
     }
 
 

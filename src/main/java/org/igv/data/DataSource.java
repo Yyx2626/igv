@@ -24,6 +24,24 @@ public interface DataSource {
             int endLocation,
             int zoom);
 
+    /**
+     * Returns unwindowed source values for exact aggregation into caller-defined bins.
+     * Implementations with direct raw access should override this default to avoid mutating
+     * their current display window function during the query.
+     */
+    default List<LocusScore> getRawScoresForRange(
+            String chr, int startLocation, int endLocation, int zoom) {
+        synchronized (this) {
+            WindowFunction original = getWindowFunction();
+            try {
+                setWindowFunction(WindowFunction.none);
+                return getSummaryScoresForRange(chr, startLocation, endLocation, zoom);
+            } finally {
+                setWindowFunction(original);
+            }
+        }
+    }
+
     DataType getDataType();
 
     void setWindowFunction(WindowFunction statType);

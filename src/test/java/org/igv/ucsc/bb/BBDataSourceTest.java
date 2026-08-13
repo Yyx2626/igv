@@ -14,16 +14,28 @@ import static org.junit.Assert.*;
 
 public class BBDataSourceTest {
 
+    @Test
+    public void rawQueryBypassesPyramidWithoutChangingSelectedWindowFunction() throws IOException {
+        Genome genome = TestUtils.mockUCSCGenome();
+        BBFile bbFile = new BBFile(TestUtils.DATA_DIR + "bb/fixedStep.bw", genome);
+        BBDataSource source = new BBDataSource(bbFile, genome);
+        source.setWindowFunction(WindowFunction.max);
+
+        DataTile rawTile = source.getRawData("1", 0, Integer.MAX_VALUE);
+        List<LocusScore> rawScores = source.getRawScoresForRange("1", 0, Integer.MAX_VALUE, 0);
+
+        assertNotNull(rawTile);
+        assertEquals(rawTile.getValues().length, rawScores.size());
+        for (int i = 0; i < rawScores.size(); i++) {
+            assertEquals(rawTile.getValues()[i], rawScores.get(i).getScore(), 0f);
+        }
+        assertEquals(WindowFunction.max, source.getWindowFunction());
+    }
+
     /**
-     * absoluteMax used to be unreconstructable from bigwig zoom records (BBFile.decodeZoomData
-     * had no case for it) and BBDataSource special-cased it to always return null, forcing a
-     * fallback to a raw-data path with its own, much coarser resolution than min/max/mean get
-     * from the same zoom level - the actual cause of a since-fixed bug where an "Average With
-     * Error Bar" track computed wildly inflated values for members left on their default
-     * WindowFunction.none (resolved to absoluteMax). Zoom records already carry both min and
-     * max, so absoluteMax needs no extra data - this exercises the local, network-independent
-     * fixedStep.bw fixture (which does have zoom data, unlike the other local bigwig fixtures)
-     * at every zoom level it has data for.
+     * A zoom record carries enough information to decode its own absolute maximum. This checks
+     * that record-level decoding only; exact aggregation into caller-defined display/TSV bins is
+     * tested separately from raw values because a zoom record can cross a final-bin boundary.
      */
     @Test
     public void absoluteMaxIsServedFromZoomPyramidNotRawFallback() throws IOException {

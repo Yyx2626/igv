@@ -143,7 +143,15 @@ public class TrackPanel extends IGVPanel implements Scrollable, Transferable {
     }
 
     public boolean isHeightChanged() {
-        int height = track.getContentHeight();
+        // The track stack lays out the outer TrackPanelScrollPane, not this inner content
+        // panel. For variable-row tracks the inner content can stay tall and scroll while
+        // Set Track Height changes only the outer viewport. Comparing contentHeight (or this
+        // panel's preferred height) therefore misses exactly the visible-size change.
+        TrackPanelScrollPane scrollPane = getScrollPane();
+        int height = scrollPane == null
+                ? TrackPanelScrollPane.getPreferredTrackHeight(track,
+                PreferencesManager.getPreferences().getAsBoolean(Constants.SHOW_SINGLE_TRACK_PANE_KEY))
+                : scrollPane.getPreferredSize().height;
         boolean change = height != lastHeight;
         lastHeight = height;
         return change;

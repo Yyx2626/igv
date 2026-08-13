@@ -49,7 +49,10 @@ public final class RegionCollectionEdit extends AbstractUndoableEdit {
 
     private void remove() {
         igv.getSession().removeRegionsOfInterest(regions);
-        if (regions.contains(RegionOfInterestPanel.getSelectedRegion())) {
+        RegionOfInterest selected = RegionOfInterestPanel.getSelectedRegion();
+        // List.copyOf produces an immutable list whose contains(null) throws NPE.
+        // The selected ROI is normally null once the mouse has left the region bar.
+        if (selected != null && regions.contains(selected)) {
             RegionOfInterestPanel.setSelectedRegion(null);
         }
         refresh();
@@ -57,6 +60,7 @@ public final class RegionCollectionEdit extends AbstractUndoableEdit {
 
     private void refresh() {
         for (var frame : FrameManager.getFrames()) frame.refreshRegionDisplayCoordinateMap();
+        igv.repaintRegionOfInterestPanels();
         igv.repaint();
     }
 }

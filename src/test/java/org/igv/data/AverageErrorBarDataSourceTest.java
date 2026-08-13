@@ -1,9 +1,10 @@
 package org.igv.data;
 
 import org.igv.feature.LocusScore;
-import org.igv.track.DataSourceTrack;
+import org.igv.track.LoadedDataInterval;
 import org.igv.track.DataTrack;
-import org.igv.track.DataType;
+import org.igv.track.DisplayBinPlan;
+import org.igv.track.NumericTrackBinner;
 import org.igv.track.WindowFunction;
 import org.junit.Test;
 
@@ -16,48 +17,35 @@ import static org.junit.Assert.assertTrue;
 
 public class AverageErrorBarDataSourceTest {
 
-    /** Reports a fixed max and min for the whole queried range, whichever the caller last selected. */
-    private static class FixedMinMaxSource implements DataSource {
-        private final float max;
-        private final float min;
-        private WindowFunction windowFunction = WindowFunction.mean;
+    /** Minimal track fixture that does not initialize application preferences. */
+    private static class FixedTrack extends DataTrack {
+        private final Float rawValue;
+        private final float zoomMax;
+        private WindowFunction windowFunction = WindowFunction.none;
 
-        FixedMinMaxSource(float max, float min) {
-            this.max = max;
-            this.min = min;
+        FixedTrack(Float rawValue) {
+            this(rawValue, rawValue == null ? Float.NaN : rawValue);
+        }
+
+        FixedTrack(Float rawValue, float zoomMax) {
+            super();
+            this.rawValue = rawValue;
+            this.zoomMax = zoomMax;
         }
 
         @Override
-        public List<LocusScore> getSummaryScoresForRange(String chr, int start, int end, int zoom) {
-            float value = windowFunction == WindowFunction.max ? max
-                    : windowFunction == WindowFunction.min ? min : Float.NaN;
-            return Float.isNaN(value) ? Collections.emptyList()
+        public LoadedDataInterval<List<LocusScore>> getSummaryScores(
+                String chr, int start, int end, int zoom) {
+            float value = windowFunction == WindowFunction.max ? zoomMax
+                    : rawValue == null ? Float.NaN : rawValue;
+            List<LocusScore> scores = Float.isNaN(value) ? Collections.emptyList()
                     : List.of(new BasicScore(start, end, value));
+            return new LoadedDataInterval<>(chr, start, end, zoom, scores);
         }
 
         @Override
-        public double getDataMax() {
-            return max;
-        }
-
-        @Override
-        public double getDataMin() {
-            return min;
-        }
-
-        @Override
-        public DataType getDataType() {
-            return DataType.OTHER;
-        }
-
-        @Override
-        public void setWindowFunction(WindowFunction statType) {
-            this.windowFunction = statType;
-        }
-
-        @Override
-        public boolean isLogNormalized() {
-            return false;
+        public void setWindowFunction(WindowFunction type) {
+            windowFunction = type;
         }
 
         @Override
@@ -66,27 +54,28 @@ public class AverageErrorBarDataSourceTest {
         }
 
         @Override
-        public void dispose() {
+        public Collection<WindowFunction> getAvailableWindowFunctions() {
+            return List.of(WindowFunction.none, WindowFunction.mean, WindowFunction.max, WindowFunction.min);
         }
     }
 
-    private static DataTrack member(float max, float min) {
-        return new DataSourceTrack(null, "m", "m", new FixedMinMaxSource(max, min));
+    private static DataTrack member(Float rawValue) {
+        return new FixedTrack(rawValue);
     }
 
     @Test
     public void envelopeSplitsIntoPositiveAndNegativeGroupsWhenMembersDisagreeOnSign() {
-        // Member 1 itself crosses zero (max 6, min -2); member 2 is positive-only (its own
-        // min never goes below its baseline in this bin - modeled here as NaN/no negative
-        // data); member 3 is negative-only. naValue defaults to 0, so member 3 contributes 0
-        // to the positive group's sum, and member 2 contributes 0 to the negative group's.
+        // naValue defaults to 0, so the negative member contributes 0 to the positive group,
+        // while both positive members contribute 0 to the negative group.
         List<DataTrack> members = List.of(
-                member(6f, -2f),
-                member(4f, Float.NaN),
-                member(-1f, -5f));
+                member(6f),
+                member(4f),
+                member(-5f));
         AverageErrorBarDataSource source = new AverageErrorBarDataSource(members, WindowFunction.none);
 
-        List<LocusScore> result = source.getSummaryScoresForRange("chr1", 0, 100, 0);
+        List<LocusScore> result = NumericTrackBinner.binAverageEnvelope(
+                source.getSummaryScoresForRange("chr1", 0, 100, 0),
+                DisplayBinPlan.create(0, 100, 1, List.of()));
 
         assertEquals(2, result.size());
         AverageErrorLocusScore pos = (AverageErrorLocusScore) result.get(0);
@@ -96,18 +85,23 @@ public class AverageErrorBarDataSourceTest {
         assertEquals(3, pos.getN());
         assertEquals((6f + 4f + 0f) / 3f, pos.getScore(), 0.0001f);
         assertEquals(3, neg.getN());
-        assertEquals((-2f - 5f + 0f) / 3f, neg.getScore(), 0.0001f);
+        assertEquals((-5f + 0f + 0f) / 3f, neg.getScore(), 0.0001f);
+        assertEquals(6f, pos.getMemberValue(0), 0f);
+        assertEquals(4f, pos.getMemberValue(1), 0f);
+        assertEquals(0f, pos.getMemberValue(2), 0f);
     }
 
     @Test
     public void envelopeEmitsOnlyOneGroupWhenEveryMemberAgreesOnSign() {
         List<DataTrack> members = List.of(
-                member(6f, Float.NaN),
-                member(4f, Float.NaN),
-                member(9f, Float.NaN));
+                member(6f),
+                member(4f),
+                member(9f));
         AverageErrorBarDataSource source = new AverageErrorBarDataSource(members, WindowFunction.none);
 
-        List<LocusScore> result = source.getSummaryScoresForRange("chr1", 0, 100, 0);
+        List<LocusScore> result = NumericTrackBinner.binAverageEnvelope(
+                source.getSummaryScoresForRange("chr1", 0, 100, 0),
+                DisplayBinPlan.create(0, 100, 1, List.of()));
 
         assertEquals(1, result.size());
         AverageErrorLocusScore pos = (AverageErrorLocusScore) result.get(0);
@@ -118,13 +112,30 @@ public class AverageErrorBarDataSourceTest {
     @Test
     public void envelopeEmitsNothingWhenNoMemberHasDataOnEitherSide() {
         List<DataTrack> members = List.of(
-                member(Float.NaN, Float.NaN),
-                member(Float.NaN, Float.NaN));
+                member(null),
+                member(null));
         AverageErrorBarDataSource source = new AverageErrorBarDataSource(members, WindowFunction.none);
 
-        List<LocusScore> result = source.getSummaryScoresForRange("chr1", 0, 100, 0);
+        List<LocusScore> result = NumericTrackBinner.binAverageEnvelope(
+                source.getSummaryScoresForRange("chr1", 0, 100, 0),
+                DisplayBinPlan.create(0, 100, 1, List.of()));
 
         assertTrue(result.isEmpty());
+    }
+
+    @Test
+    public void noneUsesRawValuesRatherThanOverlappingZoomMaxima() {
+        List<DataTrack> members = List.of(
+                new FixedTrack(2f, 100f),
+                new FixedTrack(4f, 200f));
+        AverageErrorBarDataSource source = new AverageErrorBarDataSource(members, WindowFunction.none);
+
+        AverageErrorLocusScore score = (AverageErrorLocusScore)
+                source.getSummaryScoresForRange("chr1", 0, 100, 0).get(0);
+
+        assertEquals(3f, score.getScore(), 0f);
+        assertEquals(2f, score.getMemberValue(0), 0f);
+        assertEquals(4f, score.getMemberValue(1), 0f);
     }
 
     @Test

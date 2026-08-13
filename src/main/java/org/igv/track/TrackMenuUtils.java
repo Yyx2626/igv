@@ -39,6 +39,7 @@ import org.igv.ui.panel.IGVPopupMenu;
 import org.igv.ui.panel.ReferenceFrame;
 import org.igv.ui.panel.RegionalSettingsDialog;
 import org.igv.ui.panel.TrackPanel;
+import org.igv.ui.panel.TrackPanelDivider;
 import org.igv.ui.panel.TrackPanelScrollPane;
 import org.igv.ui.panel.TrackSelectionPanel;
 import org.igv.ui.undo.TrackStructureEdit;
@@ -468,9 +469,74 @@ public class TrackMenuUtils {
                 IGV.getInstance().repaint(list);
             });
             items.add(item);
+
+            JMenu borderMenu = createPairBorderMenu(list);
+            if (borderMenu != null) {
+                items.add(borderMenu);
+            }
         }
 
         return items;
+    }
+
+    private static JMenu createPairBorderMenu(Collection<Track> selection) {
+        List<Track> borderTracks = resolvePairBorderTracks(selection, IGV.getInstance().getAllTracks());
+        if (borderTracks.isEmpty()) return null;
+
+        JMenu menu = new JMenu("Change Border Between Pairs");
+
+        JMenuItem heightItem = new JMenuItem("Set Border Height...");
+        heightItem.addActionListener(event -> {
+            Integer override = borderTracks.get(0).getBorderHeightOverride();
+            int current = override != null ? override : TrackPanelDivider.getGlobalDividerHeight();
+            Integer value = getIntegerInput("Border height (pixels)", current);
+            if (value == null) return;
+            IGV.getInstance().runUndoableTrackChange("Set Pair Border Height", borderTracks,
+                    () -> borderTracks.forEach(t -> t.setBorderHeightOverride(Math.max(0, value))));
+            IGV.getInstance().revalidateTrackPanels();
+        });
+        menu.add(heightItem);
+
+        JMenuItem colorItem = new JMenuItem("Set Border Color...");
+        colorItem.addActionListener(event -> {
+            Color override = borderTracks.get(0).getBorderColorOverride();
+            Color current = override != null ? override : TrackPanelDivider.getGlobalBorderColor();
+            Color color = UIUtilities.showColorChooserDialog("Select Border Color", current);
+            if (color == null) return;
+            IGV.getInstance().runUndoableTrackChange("Set Pair Border Color", borderTracks,
+                    () -> borderTracks.forEach(t -> t.setBorderColorOverride(color)));
+            IGV.getInstance().revalidateTrackPanels();
+        });
+        menu.add(colorItem);
+
+        menu.addSeparator();
+        JMenuItem unsetItem = new JMenuItem("Unset Border Height/Color");
+        unsetItem.setEnabled(borderTracks.stream().anyMatch(t ->
+                t.getBorderHeightOverride() != null || t.getBorderColorOverride() != null));
+        unsetItem.addActionListener(event -> {
+            IGV.getInstance().runUndoableTrackChange("Unset Pair Border", borderTracks, () -> {
+                borderTracks.forEach(t -> {
+                    t.setBorderHeightOverride(null);
+                    t.setBorderColorOverride(null);
+                });
+            });
+            IGV.getInstance().revalidateTrackPanels();
+        });
+        menu.add(unsetItem);
+        return menu;
+    }
+
+    /** Resolve each selected pair to the top track whose lower divider separates the pair. */
+    static List<Track> resolvePairBorderTracks(Collection<Track> selection,
+                                               Collection<Track> allTracks) {
+        LinkedHashSet<Track> result = new LinkedHashSet<>();
+        for (Track track : selection) {
+            if (!TrackPairing.isPaired(track)) continue;
+            Track top = track.getPairRole() == PairRole.TOP
+                    ? track : TrackPairing.findPartner(track, allTracks);
+            if (top != null && top.getPairRole() == PairRole.TOP) result.add(top);
+        }
+        return new ArrayList<>(result);
     }
 
     /**

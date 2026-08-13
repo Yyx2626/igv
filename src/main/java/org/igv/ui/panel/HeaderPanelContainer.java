@@ -80,6 +80,16 @@ public class HeaderPanelContainer extends JPanel implements Paintable {
         invalidate();
     }
 
+    /** Repaint only the ROI strips in every visible locus header. */
+    public void repaintRegionOfInterestPanels() {
+        if (contentPanel == null) return;
+        for (Component component : contentPanel.getComponents()) {
+            if (component instanceof HeaderPanel headerPanel) {
+                headerPanel.repaintRegionOfInterestPanel();
+            }
+        }
+    }
+
 //    public void paintOffscreen(Graphics2D g, Rectangle rect, boolean batch) {
 //       paint(g);
 //    }
@@ -225,6 +235,5 @@ class HeaderDropTargetListener implements DropTargetListener {
         IGV.getInstance().resetFrames();
     }
 } // HeaderDropTargetListener
-
 
 

@@ -250,9 +250,14 @@ public class TrackPanelScrollPane extends JPanel implements Paintable {
         if (trackPanel == null || trackPanel.getTrack() == null) {
             return new Dimension(0, 0);
         }
-        int height = PreferencesManager.getPreferences().getAsBoolean(Constants.SHOW_SINGLE_TRACK_PANE_KEY) ?
-                trackPanel.getTrack().getContentHeight() : trackPanel.getTrack().getHeight();
+        int height = getPreferredTrackHeight(trackPanel.getTrack(),
+                PreferencesManager.getPreferences().getAsBoolean(Constants.SHOW_SINGLE_TRACK_PANE_KEY));
         return new Dimension(super.getPreferredSize().width, height);
+    }
+
+    /** The height consumed by one track in the outer track stack. */
+    static int getPreferredTrackHeight(org.igv.track.Track track, boolean singleTrackPane) {
+        return singleTrackPane ? track.getContentHeight() : track.getHeight();
     }
 
     @Override

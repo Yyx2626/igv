@@ -149,7 +149,9 @@ public abstract class DataTrack extends AbstractTrack implements ScalableTrack, 
             // overflow
             expandedEnd = Integer.MAX_VALUE;
         }
-        LoadedDataInterval<List<LocusScore>> interval = getSummaryScores(queryChr, expandedStart, expandedEnd, zoom);
+        LoadedDataInterval<List<LocusScore>> interval = usesExactFinalBinAggregation()
+                ? getRawSummaryScores(queryChr, expandedStart, expandedEnd, zoom)
+                : getSummaryScores(queryChr, expandedStart, expandedEnd, zoom);
         loadedIntervalCache.put(referenceFrame.getName(), interval);
 
     }
@@ -214,19 +216,22 @@ public abstract class DataTrack extends AbstractTrack implements ScalableTrack, 
                 int displayEnd = Math.max(displayStart + 1, (int) Math.ceil(referenceFrame.getEnd()));
                 binPlan = RegionDisplayBinPlanner.create(chr, displayStart, displayEnd, requestedBins);
             }
-            if (getWindowFunction() == WindowFunction.none) {
+            WindowFunction windowFunction = getWindowFunction();
+            if (!visibleScores.isEmpty() && visibleScores.get(0) instanceof AverageErrorLocusScore
+                    && usesExactFinalBinAggregation()) {
+                return NumericTrackBinner.binAverage(visibleScores, binPlan, windowFunction);
+            }
+            if (windowFunction == WindowFunction.none) {
                 // An "Average With Error Bar" track's scores are AverageErrorLocusScores
                 // carrying their own mean/SD/SEM/N (see AverageErrorBarDataSource) - re-binning
                 // those through the plain-value binEnvelope() below would discard the SD/SEM/N
                 // a caller needs to draw the error bar at all, silently dropping it. Checking
                 // the score type (rather than "is this an AverageErrorBarTrack") keeps this
                 // independent of which DataTrack subclass happens to produce that kind of score.
-                if (!visibleScores.isEmpty() && visibleScores.get(0) instanceof AverageErrorLocusScore) {
-                    return NumericTrackBinner.binAverageEnvelope(visibleScores, binPlan);
-                }
-                DataRange dataRange = getDataRange();
-                float baseline = dataRange == null ? 0f : dataRange.getBaseline();
-                return NumericTrackBinner.binEnvelope(visibleScores, binPlan, baseline);
+                return NumericTrackBinner.binEnvelope(visibleScores, binPlan, 0f);
+            }
+            if (usesExactFinalBinAggregation()) {
+                return NumericTrackBinner.binRaw(visibleScores, binPlan, windowFunction);
             }
             return NumericTrackBinner.bin(visibleScores, binPlan);
         }
@@ -323,6 +328,24 @@ public abstract class DataTrack extends AbstractTrack implements ScalableTrack, 
 
 
     abstract public LoadedDataInterval<List<LocusScore>> getSummaryScores(String chr, int startLocation, int endLocation, int zoom);
+
+    public LoadedDataInterval<List<LocusScore>> getRawSummaryScores(
+            String chr, int startLocation, int endLocation, int zoom) {
+        WindowFunction original = getWindowFunction();
+        try {
+            setWindowFunction(WindowFunction.none);
+            return getSummaryScores(chr, startLocation, endLocation, zoom);
+        } finally {
+            setWindowFunction(original);
+        }
+    }
+
+    private boolean usesExactFinalBinAggregation() {
+        WindowFunction function = getWindowFunction();
+        return function == WindowFunction.none || function == WindowFunction.mean
+                || function == WindowFunction.min || function == WindowFunction.max
+                || function == WindowFunction.absoluteMax;
+    }
 
     /**
      * Get the score over the provided region for the given type. Different types

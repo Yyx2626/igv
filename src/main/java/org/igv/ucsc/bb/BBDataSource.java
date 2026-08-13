@@ -85,6 +85,23 @@ public class BBDataSource extends AbstractDataSource implements DataSource {
 
     }
 
+    @Override
+    public List<LocusScore> getRawScoresForRange(String chr, int start, int end, int zoom) {
+        DataTile raw = getRawData(chr, start, end);
+        if (raw == null || raw.isEmpty()) return Collections.emptyList();
+        int[] starts = raw.getStartLocations();
+        int[] ends = raw.getEndLocations();
+        float[] values = raw.getValues();
+        List<LocusScore> scores = new ArrayList<>(starts.length);
+        for (int i = 0; i < starts.length; i++) {
+            float value = values[i];
+            if (Float.isFinite(value)) {
+                scores.add(new BasicScore(starts[i], ends == null ? starts[i] + 1 : ends[i], value));
+            }
+        }
+        return scores;
+    }
+
     /**
      * Return bigwig "zoom data" if available for the resolution encoded by "zoom"
      *

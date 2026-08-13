@@ -78,6 +78,15 @@ public class DataSourceTrack extends DataTrack {
     }
 
     @Override
+    public LoadedDataInterval<List<LocusScore>> getRawSummaryScores(
+            String chr, int startLocation, int endLocation, int zoom) {
+        List<LocusScore> scores = dataSource == null ? Collections.emptyList()
+                : dataSource.getRawScoresForRange(chr, startLocation, endLocation, zoom);
+        if (scores == null) scores = Collections.emptyList();
+        return new LoadedDataInterval<>(chr, startLocation, endLocation, zoom, scores);
+    }
+
+    @Override
     public void setWindowFunction(WindowFunction statType) {
         clearCaches();
         if (dataSource != null) {

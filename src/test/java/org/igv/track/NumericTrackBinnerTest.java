@@ -18,6 +18,24 @@ import static org.junit.Assert.assertTrue;
 public class NumericTrackBinnerTest {
 
     @Test
+    public void rawAggregationUsesTheRequestedFunctionInsideTheExactFinalBin() {
+        List<LocusScore> input = List.of(
+                new BasicScore(0, 10, 2f),
+                new BasicScore(10, 20, 8f),
+                new BasicScore(20, 30, -5f));
+        DisplayBinPlan plan = DisplayBinPlan.create(5, 25, 1, List.of());
+
+        assertEquals(3.25f, NumericTrackBinner.binRaw(input, plan, WindowFunction.mean)
+                .get(0).getScore(), 0f);
+        assertEquals(8f, NumericTrackBinner.binRaw(input, plan, WindowFunction.max)
+                .get(0).getScore(), 0f);
+        assertEquals(-5f, NumericTrackBinner.binRaw(input, plan, WindowFunction.min)
+                .get(0).getScore(), 0f);
+        assertEquals(8f, NumericTrackBinner.binRaw(input, plan, WindowFunction.absoluteMax)
+                .get(0).getScore(), 0f);
+    }
+
+    @Test
     public void resamplesIntoRequestedEqualBins() {
         List<LocusScore> input = List.of(
                 new BasicScore(0, 50, 2),
@@ -272,6 +290,71 @@ public class NumericTrackBinnerTest {
         assertEquals(5f, peak.getScore(), 0f);
         assertEquals(1f, peak.getSd(), 0f);
         assertEquals(0.5f, peak.getSem(), 0f);
+    }
+
+    @Test
+    public void averageEnvelopePreservesTheSelectedPeaksMemberContributions() {
+        List<LocusScore> input = List.of(
+                new AverageErrorLocusScore(0, 50, 2f, 1f, 0.5f, 2,
+                        new float[]{1f, 3f}),
+                new AverageErrorLocusScore(50, 100, 6f, 1f, 0.5f, 2,
+                        new float[]{5f, 7f}));
+
+        List<LocusScore> output = NumericTrackBinner.binAverageEnvelope(
+                input, DisplayBinPlan.create(0, 100, 1, List.of()));
+
+        AverageErrorLocusScore peak = (AverageErrorLocusScore) output.get(0);
+        assertEquals(5f, peak.getMemberValue(0), 0f);
+        assertEquals(7f, peak.getMemberValue(1), 0f);
+    }
+
+    @Test
+    public void averageEnvelopeTakesEachMembersMaximumBeforeAveraging() {
+        // The three members peak at different genomic positions. Averaging each fine interval
+        // first would return 4; the required None semantics first takes [10,10,10] for the
+        // final display bin and then averages those member maxima, returning 10.
+        List<LocusScore> input = List.of(
+                new AverageErrorLocusScore(0, 10, 4f, 0f, 0f, 3,
+                        new float[]{10f, 1f, 1f}, AverageErrorLocusScore.Group.RAW, 0f),
+                new AverageErrorLocusScore(10, 20, 4f, 0f, 0f, 3,
+                        new float[]{1f, 10f, 1f}, AverageErrorLocusScore.Group.RAW, 0f),
+                new AverageErrorLocusScore(20, 30, 4f, 0f, 0f, 3,
+                        new float[]{1f, 1f, 10f}, AverageErrorLocusScore.Group.RAW, 0f));
+
+        List<LocusScore> output = NumericTrackBinner.binAverageEnvelope(
+                input, DisplayBinPlan.create(0, 30, 1, List.of()));
+
+        AverageErrorLocusScore positive = (AverageErrorLocusScore) output.get(0);
+        assertEquals(10f, positive.getMemberValue(0), 0f);
+        assertEquals(10f, positive.getMemberValue(1), 0f);
+        assertEquals(10f, positive.getMemberValue(2), 0f);
+        assertEquals(10f, positive.getScore(), 0f);
+        assertEquals(0f, positive.getSem(), 0f);
+    }
+
+    @Test
+    public void averageEnvelopeUsesConfiguredMissingValueAndKeepsExplicitGroupIdentity() {
+        List<LocusScore> input = List.of(
+                new AverageErrorLocusScore(0, 10, 0f, 0f, 0f, 3,
+                        new float[]{10f, -5f, Float.NaN}, AverageErrorLocusScore.Group.RAW, 20f),
+                new AverageErrorLocusScore(10, 20, 0f, 0f, 0f, 3,
+                        new float[]{2f, -10f, 0f}, AverageErrorLocusScore.Group.RAW, 20f));
+
+        List<LocusScore> output = NumericTrackBinner.binAverageEnvelope(
+                input, DisplayBinPlan.create(0, 20, 1, List.of()));
+
+        AverageErrorLocusScore positive = (AverageErrorLocusScore) output.get(0);
+        AverageErrorLocusScore negative = (AverageErrorLocusScore) output.get(1);
+        assertEquals(AverageErrorLocusScore.Group.POSITIVE, positive.getGroup());
+        assertEquals(10f, positive.getMemberValue(0), 0f);
+        assertEquals(20f, positive.getMemberValue(1), 0f);
+        assertEquals(0f, positive.getMemberValue(2), 0f);
+        assertEquals(AverageErrorLocusScore.Group.NEGATIVE, negative.getGroup());
+        assertEquals(20f, negative.getMemberValue(0), 0f);
+        assertEquals(-10f, negative.getMemberValue(1), 0f);
+        assertEquals(0f, negative.getMemberValue(2), 0f);
+        assertTrue("custom NA replacement can move the negative-group mean above zero",
+                negative.getScore() > 0);
     }
 
     @Test

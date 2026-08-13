@@ -206,6 +206,11 @@ public class TrackPairing {
                 java.util.Collections.swap(panes, topIndex, bottomIndex);
             }
             swapPersistentOrder(top, bottom);
+            // Divider overrides belong to screen boundaries even though they are stored on
+            // the track immediately above each boundary. Once the pair members exchange
+            // positions, exchange their overrides too: the former TOP's pair-border style
+            // stays between the pair, and the former BOTTOM's lower-border style stays below.
+            swapBorderOverrides(top, bottom);
             top.setPairRole(PairRole.BOTTOM);
             bottom.setPairRole(PairRole.TOP);
         }
@@ -240,6 +245,15 @@ public class TrackPairing {
         long firstOrder = first.getOrder();
         first.setOrder(second.getOrder());
         second.setOrder(firstOrder);
+    }
+
+    static void swapBorderOverrides(Track first, Track second) {
+        Integer firstHeight = first.getBorderHeightOverride();
+        java.awt.Color firstColor = first.getBorderColorOverride();
+        first.setBorderHeightOverride(second.getBorderHeightOverride());
+        first.setBorderColorOverride(second.getBorderColorOverride());
+        second.setBorderHeightOverride(firstHeight);
+        second.setBorderColorOverride(firstColor);
     }
 
     public static class Partition {

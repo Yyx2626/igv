@@ -20,6 +20,24 @@ public class ScreenshotDataExporterTest {
     }
 
     @Test
+    public void regularTsvValueUsesTheSelectedWindowFunctionInTheFinalBin() {
+        List<LocusScore> scores = List.of(
+                new BasicScore(0, 10, 2f),
+                new BasicScore(10, 20, 8f),
+                new BasicScore(20, 30, -5f));
+
+        assertEquals("8.00000000", ScreenshotDataExporter.valueFor(
+                scores, 5, 25, ScreenshotDataExporter.ValueKind.VALUE, 0f,
+                null, -1, org.igv.track.WindowFunction.max));
+        assertEquals("-5.00000000", ScreenshotDataExporter.valueFor(
+                scores, 5, 25, ScreenshotDataExporter.ValueKind.VALUE, 0f,
+                null, -1, org.igv.track.WindowFunction.min));
+        assertEquals("3.25000000", ScreenshotDataExporter.valueFor(
+                scores, 5, 25, ScreenshotDataExporter.ValueKind.VALUE, 0f,
+                null, -1, org.igv.track.WindowFunction.mean));
+    }
+
+    @Test
     public void averageColumnsExposeNMeanSdAndSem() {
         List<LocusScore> scores = List.of(new AverageErrorLocusScore(0, 100, 5, 2, 1, 4));
         assertEquals("4", ScreenshotDataExporter.valueFor(scores, 0, 100, ScreenshotDataExporter.ValueKind.N, 0f, null));
@@ -75,6 +93,76 @@ public class ScreenshotDataExporterTest {
                 scores, 0, 100, ScreenshotDataExporter.ValueKind.N, 0f, true));
         assertEquals("1.00000000", ScreenshotDataExporter.valueFor(
                 scores, 0, 100, ScreenshotDataExporter.ValueKind.SD, 0f, true));
+    }
+
+    @Test
+    public void averageMemberColumnsComeFromTheSameSelectedNonePeak() {
+        List<LocusScore> scores = List.of(
+                new AverageErrorLocusScore(0, 50, 3f, 2f, 1f, 3,
+                        new float[]{1f, 3f, 5f}),
+                new AverageErrorLocusScore(50, 100, 8f, 2f, 1f, 3,
+                        new float[]{6f, 8f, 10f}));
+
+        assertEquals("6.00000000", ScreenshotDataExporter.valueFor(
+                scores, 0, 100, ScreenshotDataExporter.ValueKind.MEMBER, 0f, true, 0));
+        assertEquals("8.00000000", ScreenshotDataExporter.valueFor(
+                scores, 0, 100, ScreenshotDataExporter.ValueKind.MEMBER, 0f, true, 1));
+        assertEquals("10.0000000", ScreenshotDataExporter.valueFor(
+                scores, 0, 100, ScreenshotDataExporter.ValueKind.MEMBER, 0f, true, 2));
+        assertEquals("8.00000000", ScreenshotDataExporter.valueFor(
+                scores, 0, 100, ScreenshotDataExporter.ValueKind.AVERAGE, 0f, true));
+    }
+
+    @Test
+    public void tsvAverageUsesEachMembersOwnMaximumWithinTheOutputBin() {
+        List<LocusScore> scores = List.of(
+                new AverageErrorLocusScore(0, 10, 4f, 0f, 0f, 3,
+                        new float[]{10f, 1f, 1f}, AverageErrorLocusScore.Group.RAW, 0f),
+                new AverageErrorLocusScore(10, 20, 4f, 0f, 0f, 3,
+                        new float[]{1f, 10f, 1f}, AverageErrorLocusScore.Group.RAW, 0f),
+                new AverageErrorLocusScore(20, 30, 4f, 0f, 0f, 3,
+                        new float[]{1f, 1f, 10f}, AverageErrorLocusScore.Group.RAW, 0f));
+
+        for (int member = 0; member < 3; member++) {
+            assertEquals("10.0000000", ScreenshotDataExporter.valueFor(
+                    scores, 0, 30, ScreenshotDataExporter.ValueKind.MEMBER, 0f, true, member));
+        }
+        assertEquals("10.0000000", ScreenshotDataExporter.valueFor(
+                scores, 0, 30, ScreenshotDataExporter.ValueKind.AVERAGE, 0f, true));
+        assertEquals("0.00000000", ScreenshotDataExporter.valueFor(
+                scores, 0, 30, ScreenshotDataExporter.ValueKind.SEM, 0f, true));
+    }
+
+    @Test
+    public void tsvSelectsAverageGroupByIdentityNotByMeanSign() {
+        List<LocusScore> scores = List.of(
+                new AverageErrorLocusScore(0, 10, 0f, 0f, 0f, 2,
+                        new float[]{-10f, Float.NaN}, AverageErrorLocusScore.Group.RAW, 20f));
+
+        assertEquals("-10.0000000", ScreenshotDataExporter.valueFor(
+                scores, 0, 10, ScreenshotDataExporter.ValueKind.MEMBER, 0f, false, 0));
+        assertEquals("20.0000000", ScreenshotDataExporter.valueFor(
+                scores, 0, 10, ScreenshotDataExporter.ValueKind.MEMBER, 0f, false, 1));
+        assertEquals("5.00000000", ScreenshotDataExporter.valueFor(
+                scores, 0, 10, ScreenshotDataExporter.ValueKind.AVERAGE, 0f, false));
+    }
+
+    @Test
+    public void regularAverageStatsAreRecomputedFromExportedMemberValues() {
+        List<LocusScore> scores = List.of(
+                new AverageErrorLocusScore(0, 50, 2f, 1f, 0.5f, 2,
+                        new float[]{1f, 3f}),
+                new AverageErrorLocusScore(50, 100, 6f, 1f, 0.5f, 2,
+                        new float[]{5f, 7f}));
+
+        assertEquals("3.00000000", ScreenshotDataExporter.valueFor(
+                scores, 0, 100, ScreenshotDataExporter.ValueKind.MEMBER, 0f, null, 0));
+        assertEquals("5.00000000", ScreenshotDataExporter.valueFor(
+                scores, 0, 100, ScreenshotDataExporter.ValueKind.MEMBER, 0f, null, 1));
+        assertEquals("4.00000000", ScreenshotDataExporter.valueFor(
+                scores, 0, 100, ScreenshotDataExporter.ValueKind.AVERAGE, 0f, null));
+        assertEquals("1.41421354", ScreenshotDataExporter.valueFor(
+                scores, 0, 100, ScreenshotDataExporter.ValueKind.SD, 0f, null));
     }
 
     @Test

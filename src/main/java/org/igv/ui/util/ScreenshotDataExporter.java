@@ -16,6 +16,7 @@ import org.igv.track.AverageErrorBarTrack;
 import org.igv.track.DataTrack;
 import org.igv.track.DisplayBinPlan;
 import org.igv.track.MergedTracks;
+import org.igv.track.NumericTrackBinner;
 import org.igv.track.RegionDisplayBinPlanner;
 import org.igv.track.SequenceTrack;
 import org.igv.track.Track;
@@ -46,7 +47,7 @@ public final class ScreenshotDataExporter {
     private ScreenshotDataExporter() {
     }
 
-    enum ValueKind {VALUE, N, AVERAGE, SD, SEM, POS, NEG}
+    enum ValueKind {VALUE, MEMBER, N, AVERAGE, SD, SEM, POS, NEG}
 
     /**
      * {@code signFilter} disambiguates which of a bin's (up to two) AverageErrorLocusScore
@@ -56,15 +57,19 @@ public final class ScreenshotDataExporter {
      * only the one below, {@code null} means "no ambiguity possible" (every other case - VALUE,
      * POS, NEG, and single-group N/AVERAGE/SD/SEM, where at most one matching entry ever exists).
      */
-    private record ValueColumn(String header, ValueKind kind, Boolean signFilter) {
+    private record ValueColumn(String header, ValueKind kind, Boolean signFilter, int memberIndex) {
         ValueColumn(String header, ValueKind kind) {
-            this(header, kind, null);
+            this(header, kind, null, -1);
+        }
+
+        ValueColumn(String header, ValueKind kind, Boolean signFilter) {
+            this(header, kind, signFilter, -1);
         }
     }
 
     private record ExportTrack(String sourceHeader, Track displayTrack, DataTrack dataTrack,
                                int memberIndex, List<ValueColumn> values, boolean includeSource,
-                               float baseline) {
+                               float baseline, WindowFunction windowFunction) {
     }
 
     private record SourceMapping(Track sourceTrack, DataTrack sourceDataTrack,
@@ -146,7 +151,7 @@ public final class ScreenshotDataExporter {
                 if (frameHasSequence) {
                     List<Interval> sequenceIntervals = new ArrayList<>();
                     ExportTrack sequenceExport = new ExportTrack("Sequence source", sequenceTrack,
-                            null, -1, List.of(), includeSequenceSource, 0f);
+                            null, -1, List.of(), includeSequenceSource, 0f, WindowFunction.none);
                     for (DisplayBinPlan.Bin bin : bins) {
                         SourceMapping mapping = resolveSource(sequenceExport, bin, regions, igv.getAllTracks());
                         sequenceMappings.add(mapping);
@@ -187,7 +192,8 @@ public final class ScreenshotDataExporter {
                         if (exportTrack.includeSource) writer.write("\t" + sourceValue(mapping));
                         for (ValueColumn value : exportTrack.values) {
                             String result = valueFor(scoreCache.get(mapping.sourceDataTrack),
-                                    mapping.start, mapping.end, value.kind, exportTrack.baseline, value.signFilter);
+                                    mapping.start, mapping.end, value.kind, exportTrack.baseline,
+                                    value.signFilter, value.memberIndex, exportTrack.windowFunction);
                             writer.write("\t" + (result == null ? "NA" : result));
                         }
                     }
@@ -246,25 +252,58 @@ public final class ScreenshotDataExporter {
                     addExportTrack(result, usedNames, track, member, i,
                             trackPrefix + dataTrack.getName() + "." + member.getName(), includeSource, frames);
                 }
+            } else if (dataTrack instanceof AverageErrorBarTrack avgTrack) {
+                addAverageExportTrack(result, usedNames, track, avgTrack,
+                        trackPrefix + dataTrack.getName(), includeSource, frames);
             } else {
                 addExportTrack(result, usedNames, track, dataTrack, -1,
                         trackPrefix + dataTrack.getName(), includeSource, frames);
-                if (dataTrack instanceof AverageErrorBarTrack avgTrack) {
-                    // Per-member raw-value columns right after the average's own, so a user can
-                    // verify N/average/SD/SEM against each member's actual data in the same file
-                    // instead of exporting the average and each member separately to compare.
-                    List<DataTrack> members = avgTrack.getMemberTracks();
-                    for (int i = 0; i < members.size(); i++) {
-                        DataTrack member = members.get(i);
-                        boolean memberIncludeSource = hasSourceTransform(member, frames, igv);
-                        addExportTrack(result, usedNames, track, member, i,
-                                trackPrefix + dataTrack.getName() + ".source." + member.getName(),
-                                memberIncludeSource, frames);
-                    }
-                }
             }
         }
         return result;
+    }
+
+    private static void addAverageExportTrack(List<ExportTrack> result, Map<String, Integer> usedNames,
+                                              Track displayTrack, AverageErrorBarTrack averageTrack,
+                                              String prefix, boolean includeSource,
+                                              List<ReferenceFrame> frames) {
+        String sourceHeader = uniqueName(usedNames, prefix + ".source");
+        List<ValueColumn> values = new ArrayList<>();
+        List<DataTrack> members = averageTrack.getMemberTracks();
+        float baseline = averageTrack.getDataRange() == null
+                ? 0f : averageTrack.getDataRange().getBaseline();
+
+        if (averageTrack.getWindowFunction() == WindowFunction.none) {
+            SignRange sign = classifyWholeRangeSign(averageTrack, frames, AVERAGE_ENVELOPE_BASELINE);
+            if (sign.hasPositive() && sign.hasNegative()) {
+                addAverageMemberColumns(values, usedNames, prefix + ".pos", members, true);
+                addAverageStatColumns(values, usedNames, prefix + ".pos", true);
+                addAverageMemberColumns(values, usedNames, prefix + ".neg", members, false);
+                addAverageStatColumns(values, usedNames, prefix + ".neg", false);
+            } else if (sign.hasNegative()) {
+                addAverageMemberColumns(values, usedNames, prefix, members, false);
+                addAverageStatColumns(values, usedNames, prefix, false);
+            } else {
+                addAverageMemberColumns(values, usedNames, prefix, members, true);
+                addAverageStatColumns(values, usedNames, prefix, true);
+            }
+        } else {
+            addAverageMemberColumns(values, usedNames, prefix, members, null);
+            addAverageStatColumns(values, usedNames, prefix, null);
+        }
+        result.add(new ExportTrack(sourceHeader, displayTrack, averageTrack,
+                -1, List.copyOf(values), includeSource, baseline, averageTrack.getWindowFunction()));
+    }
+
+    private static void addAverageMemberColumns(List<ValueColumn> values,
+                                                Map<String, Integer> usedNames,
+                                                String prefix, List<DataTrack> members,
+                                                Boolean signFilter) {
+        for (int i = 0; i < members.size(); i++) {
+            values.add(new ValueColumn(uniqueName(usedNames,
+                    prefix + ".source." + members.get(i).getName()),
+                    ValueKind.MEMBER, signFilter, i));
+        }
     }
 
     private static void addExportTrack(List<ExportTrack> result, Map<String, Integer> usedNames,
@@ -272,7 +311,8 @@ public final class ScreenshotDataExporter {
                                        String prefix, boolean includeSource, List<ReferenceFrame> frames) {
         String sourceHeader = uniqueName(usedNames, prefix + ".source");
         List<ValueColumn> values = new ArrayList<>();
-        float baseline = dataTrack.getDataRange() == null ? 0f : dataTrack.getDataRange().getBaseline();
+        float baseline = dataTrack.getWindowFunction() == WindowFunction.none || dataTrack.getDataRange() == null
+                ? 0f : dataTrack.getDataRange().getBaseline();
         if (dataTrack instanceof AverageErrorBarTrack && dataTrack.getWindowFunction() == WindowFunction.none) {
             // Mirrors the plain-track "None" envelope below, one level up: AverageErrorBarDataSource
             // (see its class javadoc) emits a positive-group and/or negative-group statistic per
@@ -317,7 +357,7 @@ public final class ScreenshotDataExporter {
             values.add(new ValueColumn(uniqueName(usedNames, prefix), ValueKind.VALUE));
         }
         result.add(new ExportTrack(sourceHeader, displayTrack, dataTrack,
-                memberIndex, List.copyOf(values), includeSource, baseline));
+                memberIndex, List.copyOf(values), includeSource, baseline, dataTrack.getWindowFunction()));
     }
 
     /**
@@ -330,7 +370,7 @@ public final class ScreenshotDataExporter {
     private static final float AVERAGE_ENVELOPE_BASELINE = 0f;
 
     private static void addAverageStatColumns(List<ValueColumn> values, Map<String, Integer> usedNames,
-                                              String prefix, boolean positiveGroup) {
+                                              String prefix, Boolean positiveGroup) {
         values.add(new ValueColumn(uniqueName(usedNames, prefix + ".N"), ValueKind.N, positiveGroup));
         values.add(new ValueColumn(uniqueName(usedNames, prefix + ".average"), ValueKind.AVERAGE, positiveGroup));
         values.add(new ValueColumn(uniqueName(usedNames, prefix + ".SD"), ValueKind.SD, positiveGroup));
@@ -347,10 +387,26 @@ public final class ScreenshotDataExporter {
             RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
             int rangeStart = Math.max(0, (int) Math.floor(coordinateMap.getGenomicRenderStart()));
             int rangeEnd = Math.max(rangeStart + 1, (int) Math.ceil(coordinateMap.getGenomicRenderEnd()));
-            List<LocusScore> scores = dataTrack.getSummaryScores(
+            List<LocusScore> scores = dataTrack.getRawSummaryScores(
                     frame.getChrName(), rangeStart, rangeEnd, frame.getZoom()).getFeatures();
             if (scores == null) continue;
             for (LocusScore score : scores) {
+                if (score instanceof AverageErrorLocusScore average
+                        && average.getMemberValues() != null) {
+                    if (average.getGroup() == AverageErrorLocusScore.Group.POSITIVE) {
+                        hasPositive = true;
+                    } else if (average.getGroup() == AverageErrorLocusScore.Group.NEGATIVE) {
+                        hasNegative = true;
+                    } else {
+                        for (float memberValue : average.getMemberValues()) {
+                            if (Float.isNaN(memberValue)) continue;
+                            if (memberValue > baseline) hasPositive = true;
+                            else if (memberValue < baseline) hasNegative = true;
+                        }
+                    }
+                    if (hasPositive && hasNegative) return new SignRange(true, true);
+                    continue;
+                }
                 float value = score.getScore();
                 if (Float.isNaN(value)) continue;
                 if (value > baseline) hasPositive = true;
@@ -444,7 +500,7 @@ public final class ScreenshotDataExporter {
             List<LocusScore> scores = new ArrayList<>();
             for (Interval interval : mergeIntervals(entry.getValue())) {
                 List<LocusScore> loaded = entry.getKey()
-                        .getSummaryScores(chr, interval.start, interval.end, zoom).getFeatures();
+                        .getRawSummaryScores(chr, interval.start, interval.end, zoom).getFeatures();
                 if (loaded != null) scores.addAll(loaded);
             }
             result.put(entry.getKey(), scores);
@@ -521,6 +577,18 @@ public final class ScreenshotDataExporter {
 
     static String valueFor(List<LocusScore> scores, int binStart, int binEnd, ValueKind kind, float baseline,
                            Boolean signFilter) {
+        return valueFor(scores, binStart, binEnd, kind, baseline, signFilter, -1,
+                signFilter == null ? WindowFunction.mean : WindowFunction.none);
+    }
+
+    static String valueFor(List<LocusScore> scores, int binStart, int binEnd, ValueKind kind, float baseline,
+                           Boolean signFilter, int memberIndex) {
+        return valueFor(scores, binStart, binEnd, kind, baseline, signFilter, memberIndex,
+                signFilter == null ? WindowFunction.mean : WindowFunction.none);
+    }
+
+    static String valueFor(List<LocusScore> scores, int binStart, int binEnd, ValueKind kind, float baseline,
+                           Boolean signFilter, int memberIndex, WindowFunction windowFunction) {
         if (scores == null || scores.isEmpty()) return null;
 
         if (kind == ValueKind.POS || kind == ValueKind.NEG) {
@@ -543,30 +611,45 @@ public final class ScreenshotDataExporter {
         }
 
         if (signFilter != null) {
-            // "None" windowing on an "Average With Error Bar" track (see
-            // NumericTrackBinner.binAverageEnvelope): the native entries overlapping this bin
-            // are themselves already each-member's-own peak within their own narrower span, so
-            // weight-averaging several together (the general path below) would dilute toward
-            // zero across whatever native-resolution gaps this bin also spans with no data at
-            // all. Report the single native entry with the largest-magnitude mean on this
-            // column's side as-is, exactly like binAverageEnvelope, so display and export never
-            // disagree.
-            AverageErrorLocusScore peak = null;
-            for (LocusScore score : scores) {
-                if (overlap(score, binStart, binEnd) <= 0 || !(score instanceof AverageErrorLocusScore average)
-                        || !matchesSign(average, signFilter, baseline)) {
-                    continue;
-                }
-                if (peak == null || Math.abs(average.getScore()) > Math.abs(peak.getScore())) peak = average;
-            }
+            // Reuse the display binner so source values and N/average/SD/SEM all come from each
+            // member's max/min within this exact TSV bin, in the same order as on screen.
+            AverageErrorLocusScore peak = selectAveragePeak(
+                    scores, binStart, binEnd, signFilter, baseline);
             if (peak == null) return null;
             return switch (kind) {
+                case MEMBER -> formatNumber(peak.getMemberValue(memberIndex));
                 case N -> Integer.toString(peak.getN());
                 case AVERAGE -> String.format(Locale.ROOT, "%.9g", peak.getScore());
                 case SD -> Float.isNaN(peak.getSd()) ? null : String.format(Locale.ROOT, "%.9g", peak.getSd());
                 case SEM -> Float.isNaN(peak.getSem()) ? null : String.format(Locale.ROOT, "%.9g", peak.getSem());
                 default -> null;
             };
+        }
+
+        if (kind == ValueKind.MEMBER || kind == ValueKind.N || kind == ValueKind.AVERAGE
+                || kind == ValueKind.SD || kind == ValueKind.SEM) {
+            AverageErrorLocusScore binnedAverage = binAverageScore(
+                    scores, binStart, binEnd, windowFunction);
+            if (binnedAverage != null && binnedAverage.getMemberValues() != null) {
+                float[] memberValues = binnedAverage.getMemberValues();
+                if (kind == ValueKind.MEMBER) {
+                    return memberIndex < 0 || memberIndex >= memberValues.length
+                            ? null : formatNumber(memberValues[memberIndex]);
+                }
+                return switch (kind) {
+                    case N -> Integer.toString(binnedAverage.getN());
+                    case AVERAGE -> formatNumber(binnedAverage.getScore());
+                    case SD -> formatNumber(binnedAverage.getSd());
+                    case SEM -> formatNumber(binnedAverage.getSem());
+                    default -> null;
+                };
+            }
+        }
+
+        if (kind == ValueKind.VALUE) {
+            List<LocusScore> binned = NumericTrackBinner.binRaw(scores,
+                    DisplayBinPlan.create(binStart, binEnd, 1, List.of()), windowFunction);
+            return binned.isEmpty() ? null : formatNumber(binned.get(0).getScore());
         }
 
         if (kind == ValueKind.N) {
@@ -607,6 +690,38 @@ public final class ScreenshotDataExporter {
         return totalWeight == 0 ? null : String.format(Locale.ROOT, "%.9g", weightedSum / totalWeight);
     }
 
+    private static AverageErrorLocusScore binAverageScore(List<LocusScore> scores,
+                                                           int binStart, int binEnd,
+                                                           WindowFunction windowFunction) {
+        List<LocusScore> binned = NumericTrackBinner.binAverage(scores,
+                DisplayBinPlan.create(binStart, binEnd, 1, List.of()), windowFunction);
+        return binned.size() == 1 && binned.get(0) instanceof AverageErrorLocusScore average
+                ? average : null;
+    }
+
+    private static AverageErrorLocusScore selectAveragePeak(List<LocusScore> scores,
+                                                             int binStart, int binEnd,
+                                                             boolean positiveGroup,
+                                                             float baseline) {
+        List<LocusScore> binned = NumericTrackBinner.binAverageEnvelope(scores,
+                DisplayBinPlan.create(binStart, binEnd, 1, List.of()));
+        AverageErrorLocusScore peak = null;
+        for (LocusScore score : binned) {
+            if (!(score instanceof AverageErrorLocusScore average)
+                    || !matchesSign(average, positiveGroup, baseline)) {
+                continue;
+            }
+            if (peak == null || Math.abs(average.getScore()) > Math.abs(peak.getScore())) {
+                peak = average;
+            }
+        }
+        return peak;
+    }
+
+    private static String formatNumber(float value) {
+        return Float.isNaN(value) ? null : String.format(Locale.ROOT, "%.9g", value);
+    }
+
     /**
      * {@code signFilter == null} means no ambiguity is possible (see {@link ValueColumn}) - every
      * entry matches. Otherwise only the entry on the requested side of the baseline matches,
@@ -616,6 +731,8 @@ public final class ScreenshotDataExporter {
      */
     private static boolean matchesSign(AverageErrorLocusScore score, Boolean signFilter, float baseline) {
         if (signFilter == null) return true;
+        if (score.getGroup() == AverageErrorLocusScore.Group.POSITIVE) return signFilter;
+        if (score.getGroup() == AverageErrorLocusScore.Group.NEGATIVE) return !signFilter;
         return signFilter ? score.getScore() > baseline : score.getScore() < baseline;
     }
 
