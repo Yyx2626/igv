@@ -992,6 +992,12 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
 
     /** Paints a publication screenshot without relying on a destructive vertical crop. */
     public void paintOffscreen(Graphics2D g, Rectangle rect, boolean batch, boolean includeGenomicHeader) {
+        paintOffscreen(g, rect, batch, includeGenomicHeader, null);
+    }
+
+    /** Paint all tracks, or only the supplied identity set, without mutating live visibility. */
+    public void paintOffscreen(Graphics2D g, Rectangle rect, boolean batch,
+                               boolean includeGenomicHeader, Set<Track> includedTracks) {
 
         Graphics2D contentGraphics = (Graphics2D) g.create();
         contentGraphics.setColor(computeGeneralBackground());
@@ -1018,14 +1024,23 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
         }
         Arrays.sort(components, Comparator.comparingInt(Component::getY));
 
-        int dy = components[0].getY();
+        int dy = includedTracks == null ? components[0].getY() : 0;
+        boolean includeFollowingDivider = false;
         for (Component c : components) {
+
+            if (c instanceof TrackPanelScrollPane tsp) {
+                Track track = tsp.getTrackPanel().getTrack();
+                includeFollowingDivider = includedTracks == null || includedTracks.contains(track);
+                if (!includeFollowingDivider) continue;
+            } else if (includedTracks != null) {
+                if (!includeFollowingDivider) continue;
+                includeFollowingDivider = false;
+            }
 
             Graphics2D g2d = (Graphics2D) contentGraphics.create();
             g2d.translate(0, dy);
 
-            if (c instanceof TrackPanelScrollPane) {
-                TrackPanelScrollPane tsp = (TrackPanelScrollPane) c;
+            if (c instanceof TrackPanelScrollPane tsp) {
 
                 int panelHeight = tsp.getSnapshotHeight(batch);
 
@@ -1081,6 +1096,26 @@ public class MainPanel extends JPanel implements Paintable, DropTargetListener {
         } else {
             return getHeight();
         }
+    }
+
+    /** Compact screenshot height for a selected subset, including each selected track's divider. */
+    public int getSnapshotHeight(boolean batch, Set<Track> includedTracks) {
+        if (includedTracks == null) return getSnapshotHeight(batch);
+        int height = applicationHeaderPanel.getHeight();
+        boolean includeFollowingDivider = false;
+        Component[] components = trackPanelContainer.getComponents();
+        Arrays.sort(components, Comparator.comparingInt(Component::getY));
+        for (Component component : components) {
+            if (component instanceof TrackPanelScrollPane pane) {
+                Track track = pane.getTrackPanel().getTrack();
+                includeFollowingDivider = includedTracks.contains(track);
+                if (includeFollowingDivider) height += pane.getSnapshotHeight(batch);
+            } else if (includeFollowingDivider) {
+                height += component.getHeight();
+                includeFollowingDivider = false;
+            }
+        }
+        return height;
     }
 
     public void repaintHeaderPanels() {

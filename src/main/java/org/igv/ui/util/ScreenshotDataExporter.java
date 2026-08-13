@@ -40,6 +40,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /** Exports visible numeric tracks and, at base resolution, reference sequence into genomic bins. */
 public final class ScreenshotDataExporter {
@@ -93,10 +94,17 @@ public final class ScreenshotDataExporter {
     }
 
     public static void export(IGV igv, File file, int requestedBins) throws IOException {
+        export(igv, file, requestedBins, null);
+    }
+
+    public static void export(IGV igv, File file, int requestedBins,
+                              Set<Track> includedTracks) throws IOException {
         List<ReferenceFrame> frames = FrameManager.getFrames().stream().filter(ReferenceFrame::isVisible).toList();
-        List<ExportTrack> exportTracks = buildExportTracks(igv, frames);
+        List<ExportTrack> exportTracks = buildExportTracks(igv, frames, includedTracks);
         SequenceTrack sequenceTrack = igv.getSequenceTrack();
-        boolean includeSequence = sequenceTrack != null && frames.stream().anyMatch(frame ->
+        boolean includeSequence = sequenceTrack != null
+                && (includedTracks == null || includedTracks.contains(sequenceTrack))
+                && frames.stream().anyMatch(frame ->
                 frame.getScale() < PreferencesManager.getPreferences().getAsInt(Constants.MAX_SEQUENCE_RESOLUTION)
                         && !frame.getChrName().equals(org.igv.Globals.CHR_ALL));
         boolean includeSequenceSource = includeSequence && hasSourceTransform(sequenceTrack, frames, igv);
@@ -233,12 +241,13 @@ public final class ScreenshotDataExporter {
         return strand == Strand.NEGATIVE ? "Sequence_genomic_minus" : "Sequence_genomic_plus";
     }
 
-    private static List<ExportTrack> buildExportTracks(IGV igv, List<ReferenceFrame> frames) {
+    private static List<ExportTrack> buildExportTracks(IGV igv, List<ReferenceFrame> frames,
+                                                       Set<Track> includedTracks) {
         List<ExportTrack> result = new ArrayList<>();
         Map<String, Integer> usedNames = new LinkedHashMap<>();
         int trackNumber = 0;
-        for (Track track : igv.getAllTracks()) {
-            if (!track.isVisible() || !(track instanceof DataTrack dataTrack)) continue;
+        for (Track track : filterExportableTracks(igv.getAllTracks(), includedTracks)) {
+            DataTrack dataTrack = (DataTrack) track;
             // "track_N." disambiguates which visible track a column belongs to at a glance,
             // numbered in display order among only the tracks that actually get exported - every
             // column contributed by this one visible track (including an Average track's own
@@ -259,6 +268,17 @@ public final class ScreenshotDataExporter {
                 addExportTrack(result, usedNames, track, dataTrack, -1,
                         trackPrefix + dataTrack.getName(), includeSource, frames);
             }
+        }
+        return result;
+    }
+
+    /** Preserve display order while filtering to selected, visible numeric tracks. */
+    static List<Track> filterExportableTracks(Collection<? extends Track> tracks,
+                                              Set<Track> includedTracks) {
+        List<Track> result = new ArrayList<>();
+        for (Track track : tracks) {
+            if (includedTracks != null && !includedTracks.contains(track)) continue;
+            if (track.isVisible() && track instanceof DataTrack) result.add(track);
         }
         return result;
     }

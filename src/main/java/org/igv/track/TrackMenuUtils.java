@@ -192,6 +192,9 @@ public class TrackMenuUtils {
                     }
                 }
 
+                multiMenu.addSeparator();
+                multiMenu.add(getSaveScreenshotItem(track));
+
                 // Remove
                 multiMenu.addSeparator();
                 multiMenu.add(TrackMenuUtils.getRemoveMenuItem(selectedTracks));
@@ -238,19 +241,9 @@ public class TrackMenuUtils {
             }
         }
 
-        // An unchecked overlay should expose the same commands as the checked singleton
-        // selection.  The legacy per-track image/export footer exists only on this old
-        // single-track path, so retaining it for MergedTracks would leave the two popup
-        // variants different even after their numeric controls were unified.
+        menu.addSeparator();
+        menu.add(getSaveScreenshotItem(track));
         if (!(track instanceof MergedTracks)) {
-            menu.addSeparator();
-            JMenuItem savePng = new JMenuItem("Save PNG image...");
-            savePng.addActionListener(e1 -> saveImage(track, "png"));
-            menu.add(savePng);
-            JMenuItem saveSvg = new JMenuItem("Save SVG image...");
-            saveSvg.addActionListener(e1 -> saveImage(track, "svg"));
-            menu.add(saveSvg);
-
             ReferenceFrame frame = FrameManager.getDefaultFrame();
             JMenuItem exportFeats = TrackMenuUtils.getExportFeatures(track, frame);
             if (exportFeats != null) menu.add(exportFeats);
@@ -288,8 +281,18 @@ public class TrackMenuUtils {
         menu.addSeparator();
     }
 
-    public static void saveImage(Track track, String extension) {
-        IGV.getInstance().saveImage(track.getViewport(), "igv_panel", extension);
+    private static JMenuItem getSaveScreenshotItem(Track clickedTrack) {
+        JMenuItem item = new JMenuItem("Save Screenshot...");
+        item.addActionListener(event -> {
+            IGV igv = IGV.getInstance();
+            if (IGV.getSelectedTracks().isEmpty() && clickedTrack != null
+                    && clickedTrack.getViewport() != null
+                    && clickedTrack.getViewport().getSelectionPanel() != null) {
+                clickedTrack.getViewport().getSelectionPanel().setTrackSelected(true);
+            }
+            igv.saveScreenshot(true);
+        });
+        return item;
     }
 
     /**

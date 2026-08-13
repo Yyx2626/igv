@@ -19,7 +19,8 @@ public final class ScreenshotDialog {
 
     public record Options(File outputPrefix, ImageFileTypes.Type format,
                           boolean includeCoordinates, boolean includeTrackNames,
-                          boolean outputDataTsv, boolean addCoordinateRange) {
+                          boolean outputDataTsv, boolean addCoordinateRange,
+                          boolean onlySelectedTracks) {
         private String outputStem() {
             String suffix = addCoordinateRange ? ScreenshotFilename.currentCoordinateSuffix() : "";
             return outputPrefix.getAbsolutePath() + (suffix.isEmpty() ? "" : "." + suffix);
@@ -35,6 +36,10 @@ public final class ScreenshotDialog {
     }
 
     public static Options show(Frame owner) {
+        return show(owner, false);
+    }
+
+    public static Options show(Frame owner, boolean preferSelectedTracks) {
         File lastDirectory = PreferencesManager.getPreferences().getLastSnapshotDirectory();
         Options previous = lastAcceptedOptions;
         File defaultPrefix = previous == null
@@ -61,6 +66,11 @@ public final class ScreenshotDialog {
                 previous == null || previous.includeTrackNames());
         JCheckBox outputData = new JCheckBox("Output underlying data TSV",
                 previous != null && previous.outputDataTsv());
+        boolean hasSelectedTracks = IGV.hasInstance() && !IGV.getSelectedTracks().isEmpty();
+        JCheckBox onlySelectedTracks = new JCheckBox("Only export selected tracks",
+                hasSelectedTracks && (preferSelectedTracks
+                        || previous != null && previous.onlySelectedTracks()));
+        onlySelectedTracks.setEnabled(hasSelectedTracks);
         JCheckBox addCoordinateRange = new JCheckBox(
                 "Add genomic coordinate range to output filename",
                 previous == null || previous.addCoordinateRange());
@@ -131,6 +141,8 @@ public final class ScreenshotDialog {
         c.gridy++;
         panel.add(outputData, c);
         c.gridy++;
+        panel.add(onlySelectedTracks, c);
+        c.gridy++;
         c.gridx = 0;
         c.gridwidth = 2;
         panel.add(Box.createVerticalStrut(8), c);
@@ -151,7 +163,7 @@ public final class ScreenshotDialog {
             File prefixFile = stripKnownExtension(new File(prefix));
             Options options = new Options(prefixFile, (ImageFileTypes.Type) formatBox.getSelectedItem(),
                     includeCoordinates.isSelected(), includeTrackNames.isSelected(), outputData.isSelected(),
-                    addCoordinateRange.isSelected());
+                    addCoordinateRange.isSelected(), onlySelectedTracks.isSelected());
             lastAcceptedOptions = options;
             return options;
         }

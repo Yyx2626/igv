@@ -51,6 +51,9 @@ For the original, unmodified IGV project, visit
 - **Publication screenshot and data export:** export PNG or SVG figures with
   optional genomic coordinates and track names, plus matching binned TSV data
   that preserves merged, average, and base-resolution sequence information.
+  Screenshots and their TSV data can be limited to the currently selected
+  tracks; the same workflow is available as **Save Screenshot...** from track
+  context menus, replacing the separate PNG/SVG commands.
   Manually set the numeric-display and TSV bin count in Preferences > General
   (1500 by default) and the viewport dimensions with View > Set IGV Window Size
   to reproduce figure layout and data resolution. Every column is prefixed

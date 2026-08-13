@@ -4,13 +4,33 @@ import org.igv.data.AverageErrorLocusScore;
 import org.igv.data.BasicScore;
 import org.igv.feature.LocusScore;
 import org.igv.feature.Strand;
+import org.igv.track.DataTrack;
+import org.igv.track.LoadedDataInterval;
+import org.igv.track.RenderContext;
+import org.igv.track.Track;
 import org.junit.Test;
 
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.Assert.assertEquals;
 
 public class ScreenshotDataExporterTest {
+
+    @Test
+    public void selectedOnlyFilterPreservesDisplayOrderAndExcludesUnselectedTracks() {
+        TestDataTrack first = new TestDataTrack();
+        TestDataTrack second = new TestDataTrack();
+        Set<Track> selected = Collections.newSetFromMap(new IdentityHashMap<>());
+        selected.add(second);
+
+        assertEquals(List.of(second), ScreenshotDataExporter.filterExportableTracks(
+                List.of(first, second), selected));
+        assertEquals(List.of(first, second), ScreenshotDataExporter.filterExportableTracks(
+                List.of(first, second), null));
+    }
 
     @Test
     public void regularValuesAreOverlapWeightedIntoRequestedBin() {
@@ -191,5 +211,17 @@ public class ScreenshotDataExporterTest {
                 ScreenshotDataExporter.cleanHeader("my track.average"));
         assertEquals("my_track.source",
                 ScreenshotDataExporter.cleanHeader("my track.source"));
+    }
+
+    private static final class TestDataTrack extends DataTrack {
+        @Override
+        public LoadedDataInterval<List<LocusScore>> getSummaryScores(
+                String chr, int startLocation, int endLocation, int zoom) {
+            return null;
+        }
+
+        @Override
+        public void render(RenderContext context) {
+        }
     }
 }

@@ -1138,8 +1138,16 @@ public class IGV implements IGVEventObserver {
 
     /** Unified publication screenshot workflow for image cropping and optional binned data. */
     public void saveScreenshot() {
-        ScreenshotDialog.Options options = ScreenshotDialog.show(mainFrame);
+        saveScreenshot(false);
+    }
+
+    /** Open the screenshot workflow, optionally preferring the current track selection. */
+    public void saveScreenshot(boolean preferSelectedTracks) {
+        ScreenshotDialog.Options options = ScreenshotDialog.show(mainFrame, preferSelectedTracks);
         if (options == null) return;
+        Set<Track> includedTracks = options.onlySelectedTracks()
+                ? Collections.newSetFromMap(new IdentityHashMap<>()) : null;
+        if (includedTracks != null) includedTracks.addAll(getSelectedTracks());
         List<File> outputs = new ArrayList<>();
         outputs.add(options.imageFile());
         if (options.outputDataTsv()) outputs.add(options.dataFile());
@@ -1157,12 +1165,13 @@ public class IGV implements IGVEventObserver {
             File parent = options.imageFile().getAbsoluteFile().getParentFile();
             if (parent != null) Files.createDirectories(parent.toPath());
             contentPane.getStatusBar().setMessage("Exporting screenshot...");
-            ScreenshotView view = new ScreenshotView(getMainPanel(), options.includeCoordinates(), options.includeTrackNames());
+            ScreenshotView view = new ScreenshotView(getMainPanel(), options.includeCoordinates(),
+                    options.includeTrackNames(), includedTracks);
             String result = SnapshotUtilities.doComponentSnapshot(view, options.imageFile(), options.format(), false);
             if (!"OK".equals(result)) throw new IOException(result);
             if (options.outputDataTsv()) {
                 int bins = Math.max(1, PreferencesManager.getPreferences().getAsInt(Constants.SCREENSHOT_DATA_BINS));
-                ScreenshotDataExporter.export(this, options.dataFile(), bins);
+                ScreenshotDataExporter.export(this, options.dataFile(), bins, includedTracks);
             }
             if (parent != null) PreferencesManager.getPreferences().setLastSnapshotDirectory(parent.getAbsolutePath());
         } catch (Exception e) {

@@ -5,6 +5,12 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
 
 ## August 13, 2026
 
+- Added **Only export selected tracks** to Save Screenshot. The option is
+  disabled when nothing is selected and filters both the compact PNG/SVG image
+  and its optional TSV using the same track snapshot. Track context menus now
+  expose one **Save Screenshot...** command instead of separate PNG/SVG items;
+  when invoked without an existing selection, the clicked track is selected
+  first and selected-only export is preferred.
 - Fixed and verified track-height changes occasionally leaving the visible
   viewport unchanged. Layout-change detection had compared content height rather than
   the outer viewport height. In addition, the three height fields in
