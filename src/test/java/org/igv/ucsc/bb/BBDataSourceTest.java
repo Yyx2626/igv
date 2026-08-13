@@ -3,6 +3,7 @@ package org.igv.ucsc.bb;
 import org.igv.data.DataTile;
 import org.igv.feature.LocusScore;
 import org.igv.feature.genome.Genome;
+import org.igv.track.WindowFunction;
 import org.igv.util.TestUtils;
 import org.junit.Test;
 
@@ -12,6 +13,46 @@ import java.util.List;
 import static org.junit.Assert.*;
 
 public class BBDataSourceTest {
+
+    /**
+     * absoluteMax used to be unreconstructable from bigwig zoom records (BBFile.decodeZoomData
+     * had no case for it) and BBDataSource special-cased it to always return null, forcing a
+     * fallback to a raw-data path with its own, much coarser resolution than min/max/mean get
+     * from the same zoom level - the actual cause of a since-fixed bug where an "Average With
+     * Error Bar" track computed wildly inflated values for members left on their default
+     * WindowFunction.none (resolved to absoluteMax). Zoom records already carry both min and
+     * max, so absoluteMax needs no extra data - this exercises the local, network-independent
+     * fixedStep.bw fixture (which does have zoom data, unlike the other local bigwig fixtures)
+     * at every zoom level it has data for.
+     */
+    @Test
+    public void absoluteMaxIsServedFromZoomPyramidNotRawFallback() throws IOException {
+        Genome genome = TestUtils.mockUCSCGenome();
+        String chr = "1";
+
+        for (int zoomLevel = 0; zoomLevel <= 5; zoomLevel++) {
+            BBFile bbFile = new BBFile(TestUtils.DATA_DIR + "bb/fixedStep.bw", genome);
+            BBDataSource bbDataSource = new BBDataSource(bbFile, genome);
+
+            bbDataSource.setWindowFunction(WindowFunction.min);
+            List<LocusScore> minScores = bbDataSource.getPrecomputedSummaryScores(chr, 0, Integer.MAX_VALUE, zoomLevel);
+            bbDataSource.setWindowFunction(WindowFunction.max);
+            List<LocusScore> maxScores = bbDataSource.getPrecomputedSummaryScores(chr, 0, Integer.MAX_VALUE, zoomLevel);
+            bbDataSource.setWindowFunction(WindowFunction.absoluteMax);
+            List<LocusScore> absMaxScores = bbDataSource.getPrecomputedSummaryScores(chr, 0, Integer.MAX_VALUE, zoomLevel);
+
+            assertNotNull("absoluteMax must be servable from the zoom pyramid like every other "
+                    + "window function, not fall back to a different (coarser) data path", absMaxScores);
+            assertEquals(minScores.size(), absMaxScores.size());
+            for (int i = 0; i < absMaxScores.size(); i++) {
+                float min = minScores.get(i).getScore();
+                float max = maxScores.get(i).getScore();
+                float expected = Math.abs(min) > Math.abs(max) ? min : max;
+                assertEquals("zoom=" + zoomLevel + " bin=" + i,
+                        expected, absMaxScores.get(i).getScore(), 0.000000001f);
+            }
+        }
+    }
 
 
     @Test

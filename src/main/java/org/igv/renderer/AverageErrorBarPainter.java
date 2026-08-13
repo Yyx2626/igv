@@ -74,7 +74,7 @@ final class AverageErrorBarPainter {
                     dataRange.getBaseline(), mean, err, style);
 
             Color color = errorBarColor(track, style, mean, dataRange, context);
-            drawOne(context, color, (int) pX, (int) dx, span[0], span[1], style);
+            drawOne(context, color, (int) pX, (int) dx, span[0], span[1], span[2] == 1, style);
         }
     }
 
@@ -155,15 +155,24 @@ final class AverageErrorBarPainter {
         else high = Math.min(high, baseline);
         int yLo = (int) toPixel.applyAsDouble(low);
         int yHi = (int) toPixel.applyAsDouble(high);
+
+        // Whether increasing the data value moves toward a larger or smaller pixel coordinate
+        // is a property of toPixel alone (it already bakes in any axis flip) - probe it with two
+        // arbitrary, always-distinct points rather than comparing already-computed pixel values
+        // that can legitimately be equal (e.g. a tiny err rounds low and high to the same row),
+        // which would otherwise make the outward direction undecidable right when it matters most.
+        boolean pixelIncreasesWithValue = toPixel.applyAsDouble(baseline + 1) > toPixel.applyAsDouble(baseline);
+        boolean outwardAtTop = (mean >= baseline) != pixelIncreasesWithValue;
+
         if (style.getCapStyle() == ErrorBarStyle.CapStyle.SINGLE) {
+            // SINGLE ("T"-shape): only the outward half, from the mean out to the outward tip.
             int yMean = (int) toPixel.applyAsDouble(mean);
-            if (mean >= baseline) {
-                return new int[]{Math.min(yHi, yMean), Math.max(yHi, yMean)};
-            } else {
-                return new int[]{Math.min(yMean, yLo), Math.max(yMean, yLo)};
-            }
+            int yOutward = mean >= baseline ? yHi : yLo;
+            int top = Math.min(yOutward, yMean);
+            int bottom = Math.max(yOutward, yMean);
+            return new int[]{top, bottom, outwardAtTop ? 1 : 0};
         }
-        return new int[]{Math.min(yLo, yHi), Math.max(yLo, yHi)};
+        return new int[]{Math.min(yLo, yHi), Math.max(yLo, yHi), outwardAtTop ? 1 : 0};
     }
 
     /**
@@ -176,7 +185,7 @@ final class AverageErrorBarPainter {
      * instead can be off by a pixel from where the mean bar's edge actually lands,
      * leaving a thin white gap between the mean bar and an error bar drawn flush against it.
      */
-    private static int barModeYPixel(Rectangle rect, DataRange dataRange, float dataY) {
+    static int barModeYPixel(Rectangle rect, DataRange dataRange, float dataY) {
         float maxValue = dataRange.getMaximum();
         float baseValue = dataRange.getBaseline();
         float minValue = dataRange.getMinimum();
@@ -187,12 +196,20 @@ final class AverageErrorBarPainter {
         }
         double yScaleFactor = rect.getHeight() / (double) (maxValue - minValue);
         double baseDelta = maxValue - baseValue;
-        int baseY = (int) (rect.getY() + baseDelta * yScaleFactor);
-        baseY = Math.max(rect.y, Math.min(rect.y + rect.height, baseY));
+        // Keep this the *unclamped* double, exactly like XYPlotRenderer.renderScores()'s
+        // rawBaseY: renderScores() subtracts the rounded delta from the unclamped rawBaseY and
+        // only clamps the final result, it never clamps baseY itself before subtracting. Doing
+        // that clamp here first (as an earlier version of this method did) shifts the reference
+        // point by up to a pixel whenever clamping actually triggers - e.g. at the baseline of a
+        // non-negative track, where rawBaseY sits exactly one row past the last paintable pixel -
+        // which then throws every other dataY computed from it (including the mean's own pixel
+        // position, used below to keep a SINGLE-cap error bar flush against its mean bar) a pixel
+        // off from where XYPlotRenderer/BarChartRenderer actually draw them.
+        double rawBaseY = rect.getY() + baseDelta * yScaleFactor;
 
         double dy = isLog ? Math.log10(dataY) - baseValue : (dataY - baseValue);
-        int pY = baseY - (int) (dy * yScaleFactor);
-        return Math.max(rect.y, Math.min(rect.y + rect.height, pY));
+        int pY = (int) (rawBaseY - (int) (dy * yScaleFactor));
+        return XYPlotRenderer.clampYPixel(rect, pY);
     }
 
     private static AverageErrorLocusScore errorScoreOf(LocusScore score) {
@@ -213,10 +230,20 @@ final class AverageErrorBarPainter {
         return base != null ? base.darker() : ErrorBarStyle.DEFAULT_COLOR;
     }
 
-    private static void drawOne(RenderContext context, Color color, int pX, int dx, int top, int bottom, ErrorBarStyle style) {
+    private static void drawOne(RenderContext context, Color color, int pX, int dx, int top, int bottom,
+                                 boolean outwardAtTop, ErrorBarStyle style) {
+        if (bottom <= top) {
+            // The error span rounds to less than a single pixel at this scale (typically a
+            // low-signal bin on a track whose dynamic range is set by much taller peaks
+            // elsewhere) - nothing meaningful to draw, matching BarChartRenderer.drawDataPoint()'s
+            // own "skip when height <= 0" rule for the mean bar. Forcing a visible 1px mark here
+            // instead used to grow unconditionally downward, which could push a baseline-clamped,
+            // degenerate error mark one row past the gray midline in SVG/PDF export.
+            return;
+        }
         Graphics2D g = context.getGraphic2DForColor(color);
         int centerX = pX + dx / 2;
-        int height = Math.max(1, bottom - top);
+        int height = bottom - top;
 
         if (style.getShape() == ErrorBarStyle.Shape.BAR) {
             int barWidth = Math.max(1, (int) Math.round(dx * style.getBarWidthPercent() / 100.0));
@@ -227,10 +254,16 @@ final class AverageErrorBarPainter {
             g.setStroke(new BasicStroke(Math.max(1, style.getLineWidthPx())));
             g.drawLine(centerX, top, centerX, bottom);
             int capHalf = Math.max(2, dx / 4);
-            // SINGLE ("T"-shape): cap at the top end only. DOUBLE ("I"-beam): caps at both ends.
-            g.drawLine(centerX - capHalf, top, centerX + capHalf, top);
             if (style.getCapStyle() == ErrorBarStyle.CapStyle.DOUBLE) {
+                // "I"-beam: cap at both ends.
+                g.drawLine(centerX - capHalf, top, centerX + capHalf, top);
                 g.drawLine(centerX - capHalf, bottom, centerX + capHalf, bottom);
+            } else {
+                // "T"-shape: cap only at the outward tip (away from the mean), whichever end
+                // that is - for a below-baseline mean the outward tip is the bottom end, not
+                // the top.
+                int capY = outwardAtTop ? top : bottom;
+                g.drawLine(centerX - capHalf, capY, centerX + capHalf, capY);
             }
             g.setStroke(oldStroke);
         }

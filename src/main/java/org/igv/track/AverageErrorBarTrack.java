@@ -20,7 +20,6 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import javax.swing.ButtonGroup;
-import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JMenu;
 import javax.swing.JMenuItem;
 import javax.swing.JPopupMenu;
@@ -154,18 +153,6 @@ public class AverageErrorBarTrack extends DataSourceTrack {
     public List<Component> getPopupMenuItems(TrackClickEvent te) {
         List<Component> items = new ArrayList<>(super.getPopupMenuItems(te));
 
-        // The generic "Windowing Function" section built by super.getPopupMenuItems() (via
-        // TrackMenuUtils.getDataMenuItems) labels every entry with WindowFunction's own
-        // display name, which is correct for a regular track but not here: getAvailableWindowFunctions()
-        // below only ever offers absoluteMax as the equivalent of "None" (see its javadoc),
-        // so relabel just that one entry to match, without touching the shared enum value
-        // itself (which regular tracks still need labeled "Absolute Maximum").
-        for (Component c : items) {
-            if (c instanceof JCheckBoxMenuItem && WindowFunction.absoluteMax.getValue().equals(((JCheckBoxMenuItem) c).getText())) {
-                ((JCheckBoxMenuItem) c).setText("None");
-            }
-        }
-
         items.add(new JPopupMenu.Separator());
 
         JMenu errorBarTypeMenu = new JMenu("Error Bar Type");
@@ -221,7 +208,7 @@ public class AverageErrorBarTrack extends DataSourceTrack {
             // Derived from the current neighbors in the panel rather than trusting
             // getOrder() directly - see MainPanel.computeOrderForCurrentPosition().
             long order = IGV.getInstance().getMainPanel().computeOrderForCurrentPosition(this);
-            WindowFunction windowFunction = toMemberWindowFunction(getWindowFunction());
+            WindowFunction windowFunction = getWindowFunction();
             DataRange dataRange = getDataRange();
             for (Track member : memberTracks) {
                 member.setOrder(order);
@@ -266,20 +253,6 @@ public class AverageErrorBarTrack extends DataSourceTrack {
         items.add(restoreItem);
 
         return items;
-    }
-
-    /**
-     * The WindowFunction to give a restored member track, given the average track's own
-     * getWindowFunction() - unchanged unless it's {@code absoluteMax}, which this class only
-     * ever uses as the equivalent of "None" (see {@link #getPopupMenuItems} and
-     * {@code AverageErrorBarOptionsDialog}, both of which label it "None" for exactly this
-     * reason). A member restored back into a regular DataTrack should show "None" selected
-     * in its own Windowing Function menu, not "Absolute Maximum", to match what the average
-     * track appeared to be using. Static (rather than an instance method reading
-     * getWindowFunction() itself) so TrackMenuUtils's batch restore can share it.
-     */
-    public static WindowFunction toMemberWindowFunction(WindowFunction averageWindowFunction) {
-        return averageWindowFunction == WindowFunction.absoluteMax ? WindowFunction.none : averageWindowFunction;
     }
 
     /**

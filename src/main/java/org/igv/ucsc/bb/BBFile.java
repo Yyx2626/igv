@@ -577,6 +577,12 @@ public class BBFile {
                     case mean:
                         value = sumData / validCount;
                         break;
+                    case absoluteMax:
+                        // Max where the bin's values are positive, min where negative - both
+                        // minVal/maxVal are already decoded above, so this needs no extra data
+                        // beyond what every other case here already reads.
+                        value = Math.abs(minVal) > Math.abs(maxVal) ? minVal : maxVal;
+                        break;
                     default:
                         throw new RuntimeException("Unsupported window function: " + windowFunction);
 

@@ -9,3 +9,8 @@
 /test/batch/snapshots/
 /.claude/
 .DS_Store
+
+# Private test data - never commit or publish
+/internal_test_data_do_not_commit/
+*.tsv
+scratch.svg

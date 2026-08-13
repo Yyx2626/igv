@@ -121,4 +121,166 @@ public class NumericTrackBinnerTest {
 
         assertTrue(output.isEmpty());
     }
+
+    @Test
+    public void envelopeBinWithOnlyPositiveValuesGetsOneEntryAtItsMax() {
+        List<LocusScore> input = List.of(
+                new BasicScore(0, 10, 2),
+                new BasicScore(10, 20, 7),
+                new BasicScore(20, 30, 4));
+
+        List<LocusScore> output = NumericTrackBinner.binEnvelope(
+                input, DisplayBinPlan.create(0, 30, 1, List.of()), 0f);
+
+        assertEquals(1, output.size());
+        assertEquals(7f, output.get(0).getScore(), 0f);
+    }
+
+    @Test
+    public void envelopeBinWithOnlyNegativeValuesGetsOneEntryAtItsMin() {
+        List<LocusScore> input = List.of(
+                new BasicScore(0, 10, -2),
+                new BasicScore(10, 20, -7),
+                new BasicScore(20, 30, -4));
+
+        List<LocusScore> output = NumericTrackBinner.binEnvelope(
+                input, DisplayBinPlan.create(0, 30, 1, List.of()), 0f);
+
+        assertEquals(1, output.size());
+        assertEquals(-7f, output.get(0).getScore(), 0f);
+    }
+
+    @Test
+    public void mixedSignBinGetsBothAMaxAndAMinEntry() {
+        List<LocusScore> input = List.of(
+                new BasicScore(0, 10, 3),
+                new BasicScore(10, 20, -5),
+                new BasicScore(20, 30, 8),
+                new BasicScore(30, 40, -1));
+
+        List<LocusScore> output = NumericTrackBinner.binEnvelope(
+                input, DisplayBinPlan.create(0, 40, 1, List.of()), 0f);
+
+        assertEquals(2, output.size());
+        assertEquals(8f, output.get(0).getScore(), 0f);
+        assertEquals(-5f, output.get(1).getScore(), 0f);
+    }
+
+    @Test
+    public void binWithOnlyBaselineValuesGetsNoEntry() {
+        List<LocusScore> input = List.of(
+                new BasicScore(0, 10, 0),
+                new BasicScore(10, 20, 0));
+
+        List<LocusScore> output = NumericTrackBinner.binEnvelope(
+                input, DisplayBinPlan.create(0, 20, 1, List.of()), 0f);
+
+        assertTrue(output.isEmpty());
+    }
+
+    @Test
+    public void envelopeRespectsNonZeroBaseline() {
+        // Baseline 10: only the value above 10 counts as the positive side, only the one
+        // below counts as the negative side; the value exactly at baseline contributes to
+        // neither.
+        List<LocusScore> input = List.of(
+                new BasicScore(0, 10, 15),
+                new BasicScore(10, 20, 10),
+                new BasicScore(20, 30, 5));
+
+        List<LocusScore> output = NumericTrackBinner.binEnvelope(
+                input, DisplayBinPlan.create(0, 30, 1, List.of()), 10f);
+
+        assertEquals(2, output.size());
+        assertEquals(15f, output.get(0).getScore(), 0f);
+        assertEquals(5f, output.get(1).getScore(), 0f);
+    }
+
+    @Test
+    public void envelopeClassifiesEachOutputBinIndependently() {
+        List<LocusScore> input = List.of(
+                new BasicScore(0, 50, 3),
+                new BasicScore(50, 100, -6));
+
+        List<LocusScore> output = NumericTrackBinner.binEnvelope(
+                input, DisplayBinPlan.create(0, 100, 2, List.of()), 0f);
+
+        assertEquals(2, output.size());
+        assertEquals(0, output.get(0).getStart());
+        assertEquals(3f, output.get(0).getScore(), 0f);
+        assertEquals(50, output.get(1).getStart());
+        assertEquals(-6f, output.get(1).getScore(), 0f);
+    }
+
+    @Test
+    public void averageEnvelopePreservesSdSemAndNUnlikePlainEnvelope() {
+        // Re-binning an already-averaged ("Average With Error Bar", Windowing Function None)
+        // track's scores must keep SD/SEM/N - binEnvelope() would silently discard them by
+        // re-wrapping whatever extreme it finds in a bare BasicScore, dropping the error bar
+        // entirely on display.
+        List<LocusScore> input = List.of(new AverageErrorLocusScore(0, 100, 5, 2, 1, 4));
+
+        List<LocusScore> output = NumericTrackBinner.binAverageEnvelope(
+                input, DisplayBinPlan.create(0, 100, 1, List.of()));
+
+        assertEquals(1, output.size());
+        assertTrue(output.get(0) instanceof AverageErrorLocusScore);
+        AverageErrorLocusScore score = (AverageErrorLocusScore) output.get(0);
+        assertEquals(5f, score.getScore(), 0f);
+        assertEquals(2f, score.getSd(), 0f);
+        assertEquals(1f, score.getSem(), 0f);
+        assertEquals(4, score.getN());
+    }
+
+    @Test
+    public void averageEnvelopeKeepsPositiveAndNegativeGroupsFromBlendingInAWiderDisplayBin() {
+        // Two native (fine-grained) entries fall in the same wider display bin: one from the
+        // positive group, one from the negative. Averaging them together would produce a
+        // meaningless blended mean/SD - each group must stay in its own output entry.
+        List<LocusScore> input = List.of(
+                new AverageErrorLocusScore(0, 50, 6, 1, 0.5f, 3),
+                new AverageErrorLocusScore(50, 100, -4, 2, 1f, 3));
+
+        List<LocusScore> output = NumericTrackBinner.binAverageEnvelope(
+                input, DisplayBinPlan.create(0, 100, 1, List.of()));
+
+        assertEquals(2, output.size());
+        AverageErrorLocusScore pos = (AverageErrorLocusScore) output.get(0);
+        AverageErrorLocusScore neg = (AverageErrorLocusScore) output.get(1);
+        assertEquals(6f, pos.getScore(), 0f);
+        assertEquals(1f, pos.getSd(), 0f);
+        assertEquals(-4f, neg.getScore(), 0f);
+        assertEquals(2f, neg.getSd(), 0f);
+    }
+
+    @Test
+    public void averageEnvelopeReportsThePeakNotAWidthWeightedAverageOfPeaks() {
+        // A wide native entry covering most of the display bin at a low value (e.g. a long
+        // near-zero-coverage stretch) alongside a narrow one at a real peak: overlap-weighted
+        // averaging (bin()'s approach) would let the wide low entry dilute the peak toward
+        // zero - report the single highest-magnitude entry's own stats instead, exactly like
+        // binEnvelope() finds the true extreme among plain raw values instead of averaging them.
+        List<LocusScore> input = List.of(
+                new AverageErrorLocusScore(0, 90, 0.05f, 0.01f, 0.005f, 3),
+                new AverageErrorLocusScore(90, 100, 5f, 1f, 0.5f, 3));
+
+        List<LocusScore> output = NumericTrackBinner.binAverageEnvelope(
+                input, DisplayBinPlan.create(0, 100, 1, List.of()));
+
+        assertEquals(1, output.size());
+        AverageErrorLocusScore peak = (AverageErrorLocusScore) output.get(0);
+        assertEquals(5f, peak.getScore(), 0f);
+        assertEquals(1f, peak.getSd(), 0f);
+        assertEquals(0.5f, peak.getSem(), 0f);
+    }
+
+    @Test
+    public void averageEnvelopeIgnoresNonAverageScoresRatherThanMisreadingThem() {
+        List<LocusScore> input = List.of(new BasicScore(0, 100, 5));
+
+        List<LocusScore> output = NumericTrackBinner.binAverageEnvelope(
+                input, DisplayBinPlan.create(0, 100, 1, List.of()));
+
+        assertTrue(output.isEmpty());
+    }
 }

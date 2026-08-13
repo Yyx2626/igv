@@ -48,6 +48,21 @@ public class HttpUtils {
     private final String UCSC_HOST;
     private final String UCSC_BACKUP_HOST;
 
+    /**
+     * Once a request to the UCSC host has failed over to the backup host, keep sending requests
+     * to the backup host for this long instead of re-trying the (possibly still down) primary
+     * host first every time. Restored after being dropped, since every request during a real
+     * primary-host outage was paying the full connect-timeout wait against the primary again
+     * before falling back.
+     */
+    private static final long UCSC_BACKUP_DURATION = 60 * 60 * 1000;   // 1 hour
+
+    /**
+     * Time, in ms since the epoch, until which the UCSC backup host is substituted for the
+     * primary host.
+     */
+    private volatile long ucscBackupExpiration = 0;
+
     private ProxySettings proxySettings = null;
     private final int MAX_REDIRECTS = 5;
 
@@ -528,6 +543,10 @@ private HttpURLConnection openConnectionHeadOrGet(URL url) throws IOException {
             // Insure we have mapped deprecated URLs to new ones
             url = new URL(HttpMappings.mapURL(url.toExternalForm()));
 
+            // If the primary UCSC host recently failed, go straight to the backup host instead
+            // of paying another connect-timeout wait against the (likely still down) primary.
+            url = mapUCSCHost(url);
+
             // if we're already seen a redirect for this URL, use the updated one
             if (redirectCache.containsKey(url)) {
                 CachedRedirect cr = redirectCache.get(url);
@@ -753,6 +772,10 @@ private HttpURLConnection openConnectionHeadOrGet(URL url) throws IOException {
             if (url.getHost().equals(UCSC_HOST) && !isIndex(url)) {   // never use backup for index files
                 try {
                     log.warn("Connection to " + url.getHost() + " failed, retrying with backup host");
+                    // Stick with the backup host for subsequent requests too, instead of making
+                    // every one of them wait out a fresh connect-timeout against the primary host
+                    // first - this failure is very likely still in effect for the next request.
+                    ucscBackupExpiration = System.currentTimeMillis() + UCSC_BACKUP_DURATION;
                     String newURL = url.toExternalForm().replaceFirst(UCSC_HOST, UCSC_BACKUP_HOST);
                     return openConnection(new URL(newURL), requestProperties, method, redirectCount, retries);
                 } catch (IOException e1) {
@@ -762,6 +785,24 @@ private HttpURLConnection openConnectionHeadOrGet(URL url) throws IOException {
             }
             throw e;
         }
+    }
+
+    /**
+     * Substitute the UCSC backup host for the primary host if a recent request to the primary
+     * host failed over to it. The substitution is in effect for {@link #UCSC_BACKUP_DURATION}
+     * following that failure, and only applies to hosts eligible for backup at all (see
+     * {@link #isIndex}: index files never use the backup host, so they're never substituted here
+     * either, matching the fallback path below).
+     */
+    private URL mapUCSCHost(URL url) {
+        if (url.getHost().equals(UCSC_HOST) && !isIndex(url) && System.currentTimeMillis() < ucscBackupExpiration) {
+            try {
+                return new URL(url.toExternalForm().replaceFirst(UCSC_HOST, UCSC_BACKUP_HOST));
+            } catch (MalformedURLException e) {
+                log.error("Error substituting UCSC backup host", e);
+            }
+        }
+        return url;
     }
 
     private static boolean isIndex(URL url) {

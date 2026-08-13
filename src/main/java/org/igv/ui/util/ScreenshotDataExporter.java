@@ -20,6 +20,7 @@ import org.igv.track.RegionDisplayBinPlanner;
 import org.igv.track.SequenceTrack;
 import org.igv.track.Track;
 import org.igv.track.TrackPairing;
+import org.igv.track.WindowFunction;
 import org.igv.ui.IGV;
 import org.igv.ui.panel.FrameManager;
 import org.igv.ui.panel.ReferenceFrame;
@@ -45,13 +46,25 @@ public final class ScreenshotDataExporter {
     private ScreenshotDataExporter() {
     }
 
-    enum ValueKind {VALUE, N, AVERAGE, SD, SEM}
+    enum ValueKind {VALUE, N, AVERAGE, SD, SEM, POS, NEG}
 
-    private record ValueColumn(String header, ValueKind kind) {
+    /**
+     * {@code signFilter} disambiguates which of a bin's (up to two) AverageErrorLocusScore
+     * entries an N/AVERAGE/SD/SEM column reads, when an "Average With Error Bar" track's
+     * Windowing Function is None and a bin has both a positive-group and a negative-group
+     * entry: {@code TRUE} reads only the entry whose mean is above the baseline, {@code FALSE}
+     * only the one below, {@code null} means "no ambiguity possible" (every other case - VALUE,
+     * POS, NEG, and single-group N/AVERAGE/SD/SEM, where at most one matching entry ever exists).
+     */
+    private record ValueColumn(String header, ValueKind kind, Boolean signFilter) {
+        ValueColumn(String header, ValueKind kind) {
+            this(header, kind, null);
+        }
     }
 
     private record ExportTrack(String sourceHeader, Track displayTrack, DataTrack dataTrack,
-                               int memberIndex, List<ValueColumn> values, boolean includeSource) {
+                               int memberIndex, List<ValueColumn> values, boolean includeSource,
+                               float baseline) {
     }
 
     private record SourceMapping(Track sourceTrack, DataTrack sourceDataTrack,
@@ -133,7 +146,7 @@ public final class ScreenshotDataExporter {
                 if (frameHasSequence) {
                     List<Interval> sequenceIntervals = new ArrayList<>();
                     ExportTrack sequenceExport = new ExportTrack("Sequence source", sequenceTrack,
-                            null, -1, List.of(), includeSequenceSource);
+                            null, -1, List.of(), includeSequenceSource, 0f);
                     for (DisplayBinPlan.Bin bin : bins) {
                         SourceMapping mapping = resolveSource(sequenceExport, bin, regions, igv.getAllTracks());
                         sequenceMappings.add(mapping);
@@ -174,7 +187,7 @@ public final class ScreenshotDataExporter {
                         if (exportTrack.includeSource) writer.write("\t" + sourceValue(mapping));
                         for (ValueColumn value : exportTrack.values) {
                             String result = valueFor(scoreCache.get(mapping.sourceDataTrack),
-                                    mapping.start, mapping.end, value.kind);
+                                    mapping.start, mapping.end, value.kind, exportTrack.baseline, value.signFilter);
                             writer.write("\t" + (result == null ? "NA" : result));
                         }
                     }
@@ -217,19 +230,38 @@ public final class ScreenshotDataExporter {
     private static List<ExportTrack> buildExportTracks(IGV igv, List<ReferenceFrame> frames) {
         List<ExportTrack> result = new ArrayList<>();
         Map<String, Integer> usedNames = new LinkedHashMap<>();
+        int trackNumber = 0;
         for (Track track : igv.getAllTracks()) {
             if (!track.isVisible() || !(track instanceof DataTrack dataTrack)) continue;
+            // "track_N." disambiguates which visible track a column belongs to at a glance,
+            // numbered in display order among only the tracks that actually get exported - every
+            // column contributed by this one visible track (including an Average track's own
+            // stats and its members' source columns below) shares the same N.
+            String trackPrefix = "track_" + (++trackNumber) + ".";
             boolean includeSource = hasSourceTransform(track, frames, igv);
             if (dataTrack instanceof MergedTracks merged) {
                 List<DataTrack> members = merged.getMemberTracks();
                 for (int i = 0; i < members.size(); i++) {
                     DataTrack member = members.get(i);
                     addExportTrack(result, usedNames, track, member, i,
-                            dataTrack.getName() + "." + member.getName(), includeSource);
+                            trackPrefix + dataTrack.getName() + "." + member.getName(), includeSource, frames);
                 }
             } else {
                 addExportTrack(result, usedNames, track, dataTrack, -1,
-                        dataTrack.getName(), includeSource);
+                        trackPrefix + dataTrack.getName(), includeSource, frames);
+                if (dataTrack instanceof AverageErrorBarTrack avgTrack) {
+                    // Per-member raw-value columns right after the average's own, so a user can
+                    // verify N/average/SD/SEM against each member's actual data in the same file
+                    // instead of exporting the average and each member separately to compare.
+                    List<DataTrack> members = avgTrack.getMemberTracks();
+                    for (int i = 0; i < members.size(); i++) {
+                        DataTrack member = members.get(i);
+                        boolean memberIncludeSource = hasSourceTransform(member, frames, igv);
+                        addExportTrack(result, usedNames, track, member, i,
+                                trackPrefix + dataTrack.getName() + ".source." + member.getName(),
+                                memberIncludeSource, frames);
+                    }
+                }
             }
         }
         return result;
@@ -237,19 +269,96 @@ public final class ScreenshotDataExporter {
 
     private static void addExportTrack(List<ExportTrack> result, Map<String, Integer> usedNames,
                                        Track displayTrack, DataTrack dataTrack, int memberIndex,
-                                       String prefix, boolean includeSource) {
+                                       String prefix, boolean includeSource, List<ReferenceFrame> frames) {
         String sourceHeader = uniqueName(usedNames, prefix + ".source");
         List<ValueColumn> values = new ArrayList<>();
-        if (dataTrack instanceof AverageErrorBarTrack) {
+        float baseline = dataTrack.getDataRange() == null ? 0f : dataTrack.getDataRange().getBaseline();
+        if (dataTrack instanceof AverageErrorBarTrack && dataTrack.getWindowFunction() == WindowFunction.none) {
+            // Mirrors the plain-track "None" envelope below, one level up: AverageErrorBarDataSource
+            // (see its class javadoc) emits a positive-group and/or negative-group statistic per
+            // bin from each member's own max/min, classified against a literal zero baseline. A
+            // track whose groups are only ever on one side everywhere gets the usual unsuffixed
+            // N/average/SD/SEM columns; one with any mixed-sign bin gets both a ".pos.*" and a
+            // ".neg.*" set, each reading only its own group's entry via signFilter.
+            SignRange sign = classifyWholeRangeSign(dataTrack, frames, AVERAGE_ENVELOPE_BASELINE);
+            if (sign.hasPositive() && sign.hasNegative()) {
+                addAverageStatColumns(values, usedNames, prefix + ".pos", true);
+                addAverageStatColumns(values, usedNames, prefix + ".neg", false);
+            } else if (sign.hasNegative()) {
+                addAverageStatColumns(values, usedNames, prefix, false);
+            } else {
+                addAverageStatColumns(values, usedNames, prefix, true);
+            }
+        } else if (dataTrack instanceof AverageErrorBarTrack) {
             values.add(new ValueColumn(uniqueName(usedNames, prefix + ".N"), ValueKind.N));
             values.add(new ValueColumn(uniqueName(usedNames, prefix + ".average"), ValueKind.AVERAGE));
             values.add(new ValueColumn(uniqueName(usedNames, prefix + ".SD"), ValueKind.SD));
             values.add(new ValueColumn(uniqueName(usedNames, prefix + ".SEM"), ValueKind.SEM));
+        } else if (dataTrack.getWindowFunction() == WindowFunction.none) {
+            // "None" windowing shows the raw envelope rather than a single averaged value (see
+            // DataTrack/NumericTrackBinner.binEnvelope): a bin whose raw values are all on one
+            // side of the baseline reports that side's extreme, a bin straddling the baseline
+            // reports both. The column layout is decided once, from the sign of every value
+            // anywhere in the exported range, so every row of the file has the same columns -
+            // a track that's positive-only (or negative-only) everywhere gets a single plain
+            // column (unsuffixed, like any other single-value track); a track with any
+            // mixed-sign bin gets both Pos and Neg columns, with NA in whichever a given bin
+            // doesn't have.
+            SignRange sign = classifyWholeRangeSign(dataTrack, frames, baseline);
+            if (sign.hasPositive() && sign.hasNegative()) {
+                values.add(new ValueColumn(uniqueName(usedNames, prefix + ".pos"), ValueKind.POS));
+                values.add(new ValueColumn(uniqueName(usedNames, prefix + ".neg"), ValueKind.NEG));
+            } else if (sign.hasNegative()) {
+                values.add(new ValueColumn(uniqueName(usedNames, prefix), ValueKind.NEG));
+            } else {
+                values.add(new ValueColumn(uniqueName(usedNames, prefix), ValueKind.POS));
+            }
         } else {
             values.add(new ValueColumn(uniqueName(usedNames, prefix), ValueKind.VALUE));
         }
         result.add(new ExportTrack(sourceHeader, displayTrack, dataTrack,
-                memberIndex, List.copyOf(values), includeSource));
+                memberIndex, List.copyOf(values), includeSource, baseline));
+    }
+
+    /**
+     * The literal zero {@code AverageErrorBarDataSource} classifies each member's max/min
+     * against when Windowing Function is None (see its class javadoc) - not the display data
+     * range's baseline, since whole-range column-layout classification must agree with how the
+     * data source itself already decided which bins get a positive-group and/or negative-group
+     * entry.
+     */
+    private static final float AVERAGE_ENVELOPE_BASELINE = 0f;
+
+    private static void addAverageStatColumns(List<ValueColumn> values, Map<String, Integer> usedNames,
+                                              String prefix, boolean positiveGroup) {
+        values.add(new ValueColumn(uniqueName(usedNames, prefix + ".N"), ValueKind.N, positiveGroup));
+        values.add(new ValueColumn(uniqueName(usedNames, prefix + ".average"), ValueKind.AVERAGE, positiveGroup));
+        values.add(new ValueColumn(uniqueName(usedNames, prefix + ".SD"), ValueKind.SD, positiveGroup));
+        values.add(new ValueColumn(uniqueName(usedNames, prefix + ".SEM"), ValueKind.SEM, positiveGroup));
+    }
+
+    private record SignRange(boolean hasPositive, boolean hasNegative) {
+    }
+
+    private static SignRange classifyWholeRangeSign(DataTrack dataTrack, List<ReferenceFrame> frames, float baseline) {
+        boolean hasPositive = false;
+        boolean hasNegative = false;
+        for (ReferenceFrame frame : frames) {
+            RegionDisplayCoordinateMap coordinateMap = frame.getRegionDisplayCoordinateMap();
+            int rangeStart = Math.max(0, (int) Math.floor(coordinateMap.getGenomicRenderStart()));
+            int rangeEnd = Math.max(rangeStart + 1, (int) Math.ceil(coordinateMap.getGenomicRenderEnd()));
+            List<LocusScore> scores = dataTrack.getSummaryScores(
+                    frame.getChrName(), rangeStart, rangeEnd, frame.getZoom()).getFeatures();
+            if (scores == null) continue;
+            for (LocusScore score : scores) {
+                float value = score.getScore();
+                if (Float.isNaN(value)) continue;
+                if (value > baseline) hasPositive = true;
+                else if (value < baseline) hasNegative = true;
+                if (hasPositive && hasNegative) return new SignRange(true, true);
+            }
+        }
+        return new SignRange(hasPositive, hasNegative);
     }
 
     private static String uniqueName(Map<String, Integer> usedNames, String requestedName) {
@@ -410,8 +519,56 @@ public final class ScreenshotDataExporter {
         }
     }
 
-    static String valueFor(List<LocusScore> scores, int binStart, int binEnd, ValueKind kind) {
+    static String valueFor(List<LocusScore> scores, int binStart, int binEnd, ValueKind kind, float baseline,
+                           Boolean signFilter) {
         if (scores == null || scores.isEmpty()) return null;
+
+        if (kind == ValueKind.POS || kind == ValueKind.NEG) {
+            // "None" windowing envelope: the extreme (not a weighted average) among raw values
+            // strictly on this column's side of the baseline overlapping the bin - matches
+            // NumericTrackBinner.binEnvelope's per-bin classification used for display, so
+            // export and display never disagree about which bins have a pos/neg value at all.
+            Float extreme = null;
+            for (LocusScore score : scores) {
+                if (overlap(score, binStart, binEnd) <= 0) continue;
+                float value = score.getScore();
+                if (Float.isNaN(value)) continue;
+                if (kind == ValueKind.POS && value > baseline) {
+                    if (extreme == null || value > extreme) extreme = value;
+                } else if (kind == ValueKind.NEG && value < baseline) {
+                    if (extreme == null || value < extreme) extreme = value;
+                }
+            }
+            return extreme == null ? null : String.format(Locale.ROOT, "%.9g", extreme);
+        }
+
+        if (signFilter != null) {
+            // "None" windowing on an "Average With Error Bar" track (see
+            // NumericTrackBinner.binAverageEnvelope): the native entries overlapping this bin
+            // are themselves already each-member's-own peak within their own narrower span, so
+            // weight-averaging several together (the general path below) would dilute toward
+            // zero across whatever native-resolution gaps this bin also spans with no data at
+            // all. Report the single native entry with the largest-magnitude mean on this
+            // column's side as-is, exactly like binAverageEnvelope, so display and export never
+            // disagree.
+            AverageErrorLocusScore peak = null;
+            for (LocusScore score : scores) {
+                if (overlap(score, binStart, binEnd) <= 0 || !(score instanceof AverageErrorLocusScore average)
+                        || !matchesSign(average, signFilter, baseline)) {
+                    continue;
+                }
+                if (peak == null || Math.abs(average.getScore()) > Math.abs(peak.getScore())) peak = average;
+            }
+            if (peak == null) return null;
+            return switch (kind) {
+                case N -> Integer.toString(peak.getN());
+                case AVERAGE -> String.format(Locale.ROOT, "%.9g", peak.getScore());
+                case SD -> Float.isNaN(peak.getSd()) ? null : String.format(Locale.ROOT, "%.9g", peak.getSd());
+                case SEM -> Float.isNaN(peak.getSem()) ? null : String.format(Locale.ROOT, "%.9g", peak.getSem());
+                default -> null;
+            };
+        }
+
         if (kind == ValueKind.N) {
             int n = 0;
             boolean found = false;
@@ -430,10 +587,15 @@ public final class ScreenshotDataExporter {
             int weight = overlap(score, binStart, binEnd);
             if (weight <= 0) continue;
             float value;
-            if (kind == ValueKind.VALUE || kind == ValueKind.AVERAGE) {
+            if (kind == ValueKind.VALUE) {
                 value = score.getScore();
             } else if (score instanceof AverageErrorLocusScore average) {
-                value = kind == ValueKind.SD ? average.getSd() : average.getSem();
+                value = switch (kind) {
+                    case AVERAGE -> average.getScore();
+                    case SD -> average.getSd();
+                    case SEM -> average.getSem();
+                    default -> Float.NaN;
+                };
             } else {
                 continue;
             }
@@ -443,6 +605,18 @@ public final class ScreenshotDataExporter {
             }
         }
         return totalWeight == 0 ? null : String.format(Locale.ROOT, "%.9g", weightedSum / totalWeight);
+    }
+
+    /**
+     * {@code signFilter == null} means no ambiguity is possible (see {@link ValueColumn}) - every
+     * entry matches. Otherwise only the entry on the requested side of the baseline matches,
+     * disambiguating a bin with both a positive-group and a negative-group
+     * {@code AverageErrorLocusScore} (Windowing Function None on an "Average With Error Bar"
+     * track - see {@code AverageErrorBarDataSource}).
+     */
+    private static boolean matchesSign(AverageErrorLocusScore score, Boolean signFilter, float baseline) {
+        if (signFilter == null) return true;
+        return signFilter ? score.getScore() > baseline : score.getScore() < baseline;
     }
 
     private static int overlap(LocusScore score, int start, int end) {

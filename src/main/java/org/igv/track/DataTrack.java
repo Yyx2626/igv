@@ -9,6 +9,7 @@
 package org.igv.track;
 
 import org.igv.Globals;
+import org.igv.data.AverageErrorLocusScore;
 import org.igv.event.IGVEvent;
 import org.igv.event.IGVEventBus;
 import org.igv.event.IGVEventObserver;
@@ -21,6 +22,7 @@ import org.igv.logging.LogManager;
 import org.igv.logging.Logger;
 import org.igv.prefs.Constants;
 import org.igv.prefs.PreferencesManager;
+import org.igv.renderer.DataRange;
 import org.igv.renderer.DataRenderer;
 import org.igv.renderer.GraphicUtils;
 import org.igv.renderer.Renderer;
@@ -211,6 +213,20 @@ public abstract class DataTrack extends AbstractTrack implements ScalableTrack, 
                 int displayStart = Math.max(0, (int) Math.floor(referenceFrame.getOrigin()));
                 int displayEnd = Math.max(displayStart + 1, (int) Math.ceil(referenceFrame.getEnd()));
                 binPlan = RegionDisplayBinPlanner.create(chr, displayStart, displayEnd, requestedBins);
+            }
+            if (getWindowFunction() == WindowFunction.none) {
+                // An "Average With Error Bar" track's scores are AverageErrorLocusScores
+                // carrying their own mean/SD/SEM/N (see AverageErrorBarDataSource) - re-binning
+                // those through the plain-value binEnvelope() below would discard the SD/SEM/N
+                // a caller needs to draw the error bar at all, silently dropping it. Checking
+                // the score type (rather than "is this an AverageErrorBarTrack") keeps this
+                // independent of which DataTrack subclass happens to produce that kind of score.
+                if (!visibleScores.isEmpty() && visibleScores.get(0) instanceof AverageErrorLocusScore) {
+                    return NumericTrackBinner.binAverageEnvelope(visibleScores, binPlan);
+                }
+                DataRange dataRange = getDataRange();
+                float baseline = dataRange == null ? 0f : dataRange.getBaseline();
+                return NumericTrackBinner.binEnvelope(visibleScores, binPlan, baseline);
             }
             return NumericTrackBinner.bin(visibleScores, binPlan);
         }

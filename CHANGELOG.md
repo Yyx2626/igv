@@ -3,6 +3,96 @@
 This changelog records customization and debugging work in this fork. It does
 not duplicate routine changes made by the upstream `igvteam/igv` project.
 
+## Known issues / planned work (as of August 13, 2026)
+
+Code for these is written and compiles, but not yet fully verified/tested in
+the app or built into a release:
+
+- TSV export: add each Average track member's own raw value as extra columns
+  (`Average.source.<member name>`) so `Average.N/average/SD/SEM` can be
+  cross-checked against member data without exporting twice - done, needs
+  in-app verification.
+- TSV export: prefix every column with `track_N.` (display order among
+  exported tracks) so column identity is unambiguous - done, needs in-app
+  verification.
+
+Not yet started:
+
+- Debug: the "Set Track Height..." dialog (and Preferences > Tracks height)
+  sometimes doesn't change a track's visible height after clicking OK.
+  Suspect: `TrackPanel.getPreferredSize()`'s `Math.max(track.getHeight(),
+  track.getContentHeight())` can silently keep a track at its old (larger)
+  content height when shrinking a track whose `getContentHeight()` differs
+  from its own `height` field (composite/feature tracks) - needs a concrete
+  repro (which track type, shrink vs. enlarge) to confirm before fixing.
+- Add a "Change Border Between Pairs" context menu (Set Border Height / Set
+  Border Color / Unset) for one or more selected paired tracks, reusing the
+  existing per-track `borderHeightOverride`/`borderColorOverride` mechanism
+  already exposed via right-clicking a `TrackPanelDivider` directly - applies
+  the override to the TOP track of each pair in the selection (resolving
+  BOTTOM-selected tracks to their partner via `TrackPairing.findPartner`).
+- Debug: undoing "Add Region" (add Region of Interest) may already restore
+  the underlying model correctly, but the translucent red ROI bar on screen
+  doesn't disappear - likely a missing repaint after the undo, not a broken
+  undo action itself.
+
+## August 13, 2026
+
+- Fixed the actual cause of error bars visibly overshooting the gray midline
+  in SVG/PDF export: a near-zero-error bin's clamped span could round to less
+  than a single pixel, and the old code forced 1px of visible height by
+  growing unconditionally downward - past the baseline. Degenerate spans are
+  now skipped entirely (matching how `BarChartRenderer` already skips a
+  zero-height mean bar) instead of forced visible. (Two earlier attempts this
+  session - reclamping `barModeYPixel`'s bound, then matching
+  `renderScores()`'s unclamped-reference formula - fixed related but
+  different pixel-math bugs without fixing this one; the SVG file's own
+  coordinates were compared directly against the midline's to confirm this
+  fix.)
+- Fixed the SINGLE ("T"-shape) error bar cap being drawn at the wrong end -
+  the mean's end instead of the outward tip - for any bin whose mean is below
+  the baseline (e.g. minus-strand signal plotted as negative).
+- Restored the UCSC backup-host's 1-hour "sticky" cache (removed in an
+  earlier customization pass): once a request fails over to the backup host,
+  subsequent requests go straight there for an hour instead of each one
+  re-paying a fresh connect-timeout against the still-down primary host.
+- Fixed `WindowFunction.absoluteMax`: bigwig zoom-pyramid records already
+  carry both min and max, so it's now read directly from the pyramid (`max`
+  where `|min| <= |max|`, else `min`) like every other window function,
+  instead of always falling back to a separate raw-data path whose tile-range
+  math didn't match the requested query and returned data from far outside
+  it. This was the root cause of an "Average With Error Bar" track (whose
+  members were left on the default "None" windowing, silently resolved to
+  `absoluteMax`) computing wildly inflated averages.
+- Added a proper "None" windowing display/export mode instead of routing it
+  through `absoluteMax`: an ordinary numeric track now shows the true max
+  (above baseline) and/or min (below baseline) actually present in each
+  displayed bin - not a smoothed average - matching how "None" looked before
+  this fork added equal-bin-count resampling. TSV export mirrors this: a
+  track that's one-signed everywhere gets its normal single column: one that
+  has any mixed-sign bin gets separate Pos/Neg columns, NA where a bin lacks
+  either.
+- Extended "Average With Error Bar" to support "None" windowing directly
+  (member tracks keep it, rather than the average silently substituting
+  `absoluteMax`): each member's own max/min is read straight from its zoom
+  pyramid (never raw data), and bins where members disagree on sign get
+  separate positive-group and negative-group N/mean/SD/SEM statistics -
+  mirroring the plain-track envelope above, both on screen and in TSV export
+  (`.pos.N/.average/.SD/.SEM` and `.neg.*` column groups when mixed, no
+  suffix when one-signed). Fixed a real dilution bug found via this: re-binning
+  multiple native (fine-resolution) entries into one wider display/export bin
+  used an overlap-weighted average, which is correct for combining several
+  Mean-windowed entries but wrong for Max/Min-derived ones - a bin's true
+  peak was diluted toward zero by however much of the bin's width had no
+  underlying data at all (bigwig files don't store zero-coverage positions,
+  they simply omit them). Fixed by reporting the single native entry with the
+  largest-magnitude mean as-is instead of averaging toward it.
+- "None" is now a session-persisted Windowing Function value on its own for
+  an Average track (dialog and context menu both already labeled it "None"
+  for the UI-visible option that used to be `absoluteMax` internally); saving
+  and restoring a session no longer needs the old None<->absoluteMax
+  translation.
+
 ## August 11, 2026
 
 - Added **View > Set IGV Window Size** for applying exact pixel dimensions to

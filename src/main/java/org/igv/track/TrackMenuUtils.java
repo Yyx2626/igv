@@ -545,7 +545,7 @@ public class TrackMenuUtils {
                 // See the matching comments in AverageErrorBarTrack's own "Restore Original
                 // Tracks" handler / MainPanel.computeOrderForCurrentPosition().
                 long order = IGV.getInstance().getMainPanel().computeOrderForCurrentPosition(avgTrack);
-                WindowFunction windowFunction = AverageErrorBarTrack.toMemberWindowFunction(avgTrack.getWindowFunction());
+                WindowFunction windowFunction = avgTrack.getWindowFunction();
                 DataRange dataRange = avgTrack.getDataRange();
                 List<DataTrack> members = avgTrack.getMemberTracks();
                 for (Track member : members) {

@@ -47,7 +47,15 @@ For the original, unmodified IGV project, visit
   that preserves merged, average, and base-resolution sequence information.
   Manually set the numeric-display and TSV bin count in Preferences > General
   (1500 by default) and the viewport dimensions with View > Set IGV Window Size
-  to reproduce figure layout and data resolution.
+  to reproduce figure layout and data resolution. Every column is prefixed
+  with its exported track's display order (`track_N.`), and an Average track
+  also exports each member's own raw value alongside its N/average/SD/SEM.
+- **"None" windowing shows the true envelope, not a smoothed average:** a
+  numeric track (or an Average track whose members are left on "None") shows
+  the actual max above baseline and/or min below baseline present in each
+  displayed bin, instead of averaging it away - matching a bin straddling the
+  baseline shows both. TSV export mirrors this with single or separate
+  Pos/Neg columns depending on whether the exported range is one-signed.
 - **Undo and redo:** recover the 20 most recent track, pairing, composite-track,
   ROI, and Regional Settings edits from the Edit menu or standard shortcuts;
   session or genome changes start a fresh history.
@@ -85,6 +93,14 @@ For the original, unmodified IGV project, visit
   launchers.
 - Made HTTP connect/read timeouts configurable to avoid multi-minute stalls when
   a remote annotation host is unavailable.
+- Fixed an Average-With-Error-Bar error bar visibly overshooting the gray
+  midline in SVG/PDF export, and a SINGLE ("T"-shape) cap drawn at the wrong
+  end for a below-baseline mean.
+- Restored the UCSC backup-host's 1-hour "sticky" cache after a connection
+  failure, and fixed `Absolute Max` windowing to read directly from the bigwig
+  zoom pyramid instead of a raw-data fallback with mismatched query bounds
+  (the root cause of wildly inflated Average-track values when members were
+  left on the default "None" windowing).
 
 The individual commits contain the implementation rationale and detailed bug
 causes. This branch is a customized IGV build and is not an official

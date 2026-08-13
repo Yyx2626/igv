@@ -14,10 +14,9 @@ import java.awt.*;
  * to 0, so a gap in one bigwig counts as an observed zero rather than shrinking the
  * effective sample size for that bin), which Windowing Function to apply to every member
  * before averaging (defaults to the members' own shared setting if they agree, else
- * Mean; "Absolute Max" - Max where the member's bin value is positive, Min where it's
- * negative - is offered because it's what a member's own "None" windowing looks like
- * once bigwig zoom-pyramid summaries kick in at low zoom, so it's the natural match for
- * members left on "None"), and which error-bar statistic to draw (SEM / SD / None).
+ * Mean; "None" reports each member's actual max where it's positive and min where it's
+ * negative - see {@code AverageErrorBarDataSource}'s class javadoc), and which error-bar
+ * statistic to draw (SEM / SD / None).
  */
 public class AverageErrorBarOptionsDialog extends IGVDialog {
 
@@ -53,24 +52,19 @@ public class AverageErrorBarOptionsDialog extends IGVDialog {
         JRadioButton minButton = new JRadioButton("Min", defaultWindowFunction == WindowFunction.min);
         JRadioButton meanButton = new JRadioButton("Mean", defaultWindowFunction == WindowFunction.mean);
         JRadioButton maxButton = new JRadioButton("Max", defaultWindowFunction == WindowFunction.max);
-        // Labeled "None" (not "Absolute Max") to match the terminology a member's own
-        // Windowing Function menu uses - WindowFunction.absoluteMax is what a member's own
-        // "None" windowing already looks like once bigwig zoom-pyramid summaries kick in at
-        // low zoom (see the class javadoc), so presenting it under the familiar "None" name
-        // here keeps the two menus consistent even though the underlying enum value differs.
-        JRadioButton absMaxButton = new JRadioButton("None", defaultWindowFunction == WindowFunction.absoluteMax);
+        JRadioButton wfNoneButton = new JRadioButton("None", defaultWindowFunction == WindowFunction.none);
         wfGroup.add(minButton);
         wfGroup.add(meanButton);
         wfGroup.add(maxButton);
-        wfGroup.add(absMaxButton);
+        wfGroup.add(wfNoneButton);
         minButton.addActionListener(e -> windowFunction = WindowFunction.min);
         meanButton.addActionListener(e -> windowFunction = WindowFunction.mean);
         maxButton.addActionListener(e -> windowFunction = WindowFunction.max);
-        absMaxButton.addActionListener(e -> windowFunction = WindowFunction.absoluteMax);
+        wfNoneButton.addActionListener(e -> windowFunction = WindowFunction.none);
         wfPanel.add(minButton);
         wfPanel.add(meanButton);
         wfPanel.add(maxButton);
-        wfPanel.add(absMaxButton);
+        wfPanel.add(wfNoneButton);
         addRow(content, labelC, controlC, 1, "Windowing Function:", wfPanel);
 
         JPanel ebPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));

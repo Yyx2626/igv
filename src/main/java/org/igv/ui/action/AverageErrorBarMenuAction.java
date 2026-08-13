@@ -112,10 +112,9 @@ public class AverageErrorBarMenuAction {
      * Default Windowing Function to pre-select in {@code AverageErrorBarOptionsDialog}:
      * the members' own shared setting if they all agree, otherwise {@code mean} as a
      * neutral default - the user can always override it in the dialog. A shared
-     * {@code none} maps to {@code absoluteMax} (Max where positive, Min where negative),
-     * matching what a member's own "None" windowing already looks like once bigwig
-     * zoom-pyramid summaries kick in at low zoom, rather than plain {@code max} (which
-     * would silently flatten every negative-value bin toward its least-negative point).
+     * {@code none} is kept as {@code none}: {@code AverageErrorBarDataSource} handles it
+     * directly (see its class javadoc), reading each member's actual max/min from the
+     * bigwig zoom pyramid rather than substituting a different windowing function.
      */
     public static WindowFunction computeDefaultWindowFunction(Collection<? extends Track> tracks) {
         List<DataTrack> dataTracks = filterDataTracks(new ArrayList<>(tracks));
@@ -128,6 +127,6 @@ public class AverageErrorBarMenuAction {
                 return WindowFunction.mean;
             }
         }
-        return first == null || first == WindowFunction.none ? WindowFunction.absoluteMax : first;
+        return first == null ? WindowFunction.mean : first;
     }
 }
