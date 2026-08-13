@@ -257,6 +257,10 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
   origin, and established GitHub Releases as the compiled-build download page.
 - Merged the latest upstream changes available that day into the customized
   branch.
+- Removed asynchronous initial-genome switching and restored ordered startup:
+  commit the selected genome, then load its sequence and default RefSeq
+  annotation before continuing with session or data-file loading. This prevents
+  tracks or annotations from appearing temporarily under the previous genome.
 - Fixed paired Average With Error Bar placement so top and bottom averages stay
   adjacent, retain top-above-bottom order, and replace selected tracks at the
   first selected track's visible position.

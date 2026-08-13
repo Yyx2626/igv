@@ -92,10 +92,12 @@ For the original, unmodified IGV project, visit
 - Fixed missing-value statistics, pixel alignment, and SVG mid-line clipping in
   average/error-bar rendering, and kept paired top/bottom averages adjacent at
   the original selected-track position.
-- Fixed genome-switch races, added a stoppable genome-loading dialog that stays
-  visible through default RefSeq loading, cached remote RefSeq annotations for
-  later offline use, and kept progressively loaded tracks in file-load order
-  without moving RefSeq.
+- Restored ordered genome initialization: IGV commits the selected genome first,
+  then loads its sequence and default RefSeq annotation before continuing with
+  session or data-file startup. Fixed genome-switch races, added a stoppable
+  loading dialog that stays visible through RefSeq loading, cached remote RefSeq
+  annotations for later offline use, and kept interactively loaded tracks in
+  file-load order without moving RefSeq.
 - Fixed offline startup errors that could block the main window from opening by
   removing hosted-genome, OAuth, and track-hub network discovery from window
   construction; local FASTA loading now stays offline, startup windows restore
