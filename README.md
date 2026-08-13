@@ -43,36 +43,39 @@ For the original, unmodified IGV project, visit
   coordinates globally or for selected tracks, flip regional Y axes or paired
   tracks, assign regional data ranges and positive/negative/background/
   foreground colors, and support nested transformations.
-- **Customizable appearance:** control track backgrounds, borders, dividers,
-  data-range mid-lines, and related global or per-track styling to prepare
-  consistent publication-quality figures. Saving the default numeric, feature,
-  or interaction height in Preferences > Tracks also resizes matching tracks
-  already open in the current session.
-- **Publication screenshot and data export:** export PNG or SVG figures with
-  optional genomic coordinates and track names, plus matching binned TSV data
-  that preserves merged, average, and base-resolution sequence information.
-  Screenshots and their TSV data can be limited to the currently selected
-  tracks; the same workflow is available as **Save Screenshot...** from track
-  context menus, replacing the separate PNG/SVG commands.
-  Manually set the numeric-display and TSV bin count in Preferences > General
-  (1500 by default) and the viewport dimensions with View > Set IGV Window Size
-  to reproduce figure layout and data resolution. Every column is prefixed
-  with its exported track's display order (`track_N.`), and an Average track
-  also exports each member's own raw value alongside its N/average/SD/SEM.
-- **"None" windowing shows the true envelope, not a smoothed average:** a
-  numeric track (or an Average track whose members are left on "None") shows
-  the actual max above baseline and/or min below baseline present in each
-  displayed bin, instead of averaging it away - matching a bin straddling the
-  baseline shows both. TSV export mirrors this with single or separate
-  Pos/Neg columns depending on whether the exported range is one-signed.
-- **Undo and redo:** recover the 20 most recent track, pairing, composite-track,
-  ROI (including Add/Delete Region), and Regional Settings edits from the Edit
-  menu or standard shortcuts; session or genome changes start a fresh history.
+- **Customizable appearance:** users can control the colors and heights of
+  tracks, data-range mid-lines, and borders (dividers), globally or per track,
+  to prepare consistent publication-quality figures.
+- **Publication screenshot and data export:** export PNG or SVG figures, with
+  checkboxes that let users include or exclude the genomic coordinates at the
+  top and the track names on the left. The underlying data of each exported
+  track can also be exported to a matching binned TSV file. Average tracks
+  include every member track's original data together with N/average/SD/SEM.
+  Users can enable **Only export selected tracks** to export only the currently
+  selected tracks in both the screenshot and its TSV data. Users can set the
+  number of equal genomic bins used for numeric display and TSV export in
+  Preferences > General (1500 by default) to control data resolution. They can
+  also set the viewport dimensions with View > Set IGV Window Size to reproduce
+  figure layout. The same workflow is available as **Save Screenshot...** from
+  track context menus, replacing the separate PNG/SVG commands.
+- **Undo and redo:** recover the 20 most recent edits, including adding or
+  deleting tracks/regions, changing track/border/regional settings, and
+  creating or restoring Average/Overlay tracks. Session or genome changes
+  start a fresh history.
 
 ### Minor fixes and debugging
 
 - Made Save Screenshot remember the last accepted output path and options during
   the current IGV run.
+- Prefixed each TSV data column with its exported track's display order
+  (`track_N.`) to keep column identities unambiguous.
+- Made fixed-bin Mean/Maximum/Minimum/Absolute Maximum values use the exact raw
+  interval. bigWig pyramid summaries remain available only where their native
+  record boundaries do not make the requested final bin ambiguous.
+- Made **None** windowing show the true envelope rather than a smoothed average:
+  each bin shows the actual maximum above baseline and/or minimum below it,
+  including separate positive and negative sides when both exist. Average
+  tracks and TSV export use the same semantics.
 - Made About IGV and terminal startup identify the exact customized build with
   version, commit, `src/main/` SHA-256, build time, and running-JAR SHA-256.
 - Fixed duplicate loading of files dropped from macOS Finder and made divider
