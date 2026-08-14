@@ -45,9 +45,10 @@ For the original, unmodified IGV project, visit
   foreground colors, and support nested transformations.
 - **Customizable appearance:** users can control the colors and heights of
   tracks, data-range mid-lines, and borders (dividers), globally or per track,
-  to prepare consistent publication-quality figures. Divider controls make it
-  possible to use subtle separators, or borders matching the track background,
-  instead of visually dominant dark lines in exported figures.
+  to prepare consistent publication-quality figures. To avoid a visually
+  prominent border (divider) between adjacent tracks, users can set its color
+  to match the track background or set its height to 0 so adjacent tracks are
+  displayed without an intervening border.
 - **Publication screenshot and data export:** export PNG or SVG figures, with
   checkboxes that let users include or exclude the genomic coordinates at the
   top and the track names on the left. The underlying data of each exported
