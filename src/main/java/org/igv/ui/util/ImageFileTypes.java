@@ -13,7 +13,7 @@ public class ImageFileTypes {
 
         NULL("", ""),
         EPS(".eps", "Encapsulated Postscript Files (*.eps)"),
-        PDF(".pdf", "Portable Document FormatFles (*.pdf)"),
+        PDF(".pdf", "Portable Document Format Files (*.pdf)"),
         SVG(".svg", "Scalable Vector Graphics Files (*.svg)"),
         PNG(".png", "Portable Network Graphics Files (*.png)"),
         JPEG(".jpeg", "Joint Photographic Experts Group Files (*.jpeg)");

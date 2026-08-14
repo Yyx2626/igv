@@ -3,6 +3,11 @@
 This changelog records customization and debugging work in this fork. It does
 not duplicate routine changes made by the upstream `igvteam/igv` project.
 
+## August 14, 2026
+
+- Added vector PDF output to **Save Screenshot** alongside PNG and SVG. PDF uses
+  the same coordinate, track-name, selected-track, and optional TSV settings.
+
 ## August 13, 2026
 
 - Fixed Average-track autoscaling to use the error-bar span actually rendered.

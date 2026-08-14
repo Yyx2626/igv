@@ -49,13 +49,16 @@ public final class ScreenshotDialog {
         JTextField prefixField = new JTextField(defaultPrefix.getAbsolutePath(), 32);
         JButton browseButton = new JButton("Browse...");
         JComboBox<ImageFileTypes.Type> formatBox = new JComboBox<>(
-                new ImageFileTypes.Type[]{ImageFileTypes.Type.PNG, ImageFileTypes.Type.SVG});
+                new ImageFileTypes.Type[]{ImageFileTypes.Type.PNG, ImageFileTypes.Type.PDF,
+                        ImageFileTypes.Type.SVG});
         formatBox.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index,
                                                           boolean isSelected, boolean cellHasFocus) {
                 super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                setText(value == ImageFileTypes.Type.PNG ? "PNG (raster)" : "SVG (vector)");
+                if (value == ImageFileTypes.Type.PNG) setText("PNG (raster)");
+                else if (value == ImageFileTypes.Type.SVG) setText("SVG (vector)");
+                else if (value == ImageFileTypes.Type.PDF) setText("PDF (vector)");
                 return this;
             }
         });
@@ -171,7 +174,7 @@ public final class ScreenshotDialog {
 
     private static File stripKnownExtension(File file) {
         String path = file.getAbsolutePath();
-        for (String extension : new String[]{".png", ".svg", ".tsv"}) {
+        for (String extension : new String[]{".png", ".svg", ".pdf", ".tsv"}) {
             if (path.toLowerCase().endsWith(extension)) {
                 return new File(path.substring(0, path.length() - extension.length()));
             }

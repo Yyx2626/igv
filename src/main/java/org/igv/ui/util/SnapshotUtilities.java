@@ -10,6 +10,8 @@ package org.igv.ui.util;
 
 import org.apache.batik.dom.GenericDOMImplementation;
 import org.apache.batik.svggen.SVGGraphics2D;
+import org.apache.fop.svg.PDFDocumentGraphics2D;
+import org.apache.xmlgraphics.java2d.GraphicContext;
 import org.igv.logging.*;
 import org.igv.ui.panel.Paintable;
 import org.w3c.dom.DOMImplementation;
@@ -21,6 +23,7 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 
 import static org.igv.ui.util.ImageFileTypes.Type.PNG;
+import static org.igv.ui.util.ImageFileTypes.Type.PDF;
 import static org.igv.ui.util.ImageFileTypes.Type.SVG;
 
 /**
@@ -78,13 +81,17 @@ public class SnapshotUtilities {
             if (type == SVG) {
                 exportScreenshotSVG((Paintable) component, file, width, height, batch);
                 return "OK";
+            } else if (type == PDF) {
+                exportScreenshotPDF((Paintable) component, file, width, height, batch);
+                return "OK";
             } else if (type == PNG) {
                 String format = "png";
                 String[] exts = new String[]{"." + format};
                 exportScreenShotBufferedImage((Paintable) component, file, width, height, exts, format, batch);
                 return "OK";
             } else {
-                final String message = "No image write for file type: " + file + " Try '.png' or '.svg'";
+                final String message = "No image writer for file type: " + file
+                        + ". Try '.png', '.svg', or '.pdf'.";
                 MessageUtils.showMessage(message);
                 return "ERROR: " + message;
             }
@@ -121,6 +128,25 @@ public class SnapshotUtilities {
             } catch (IOException e) {
                 log.error("Error closing svg file", e);
             }
+        }
+    }
+
+    /** Paints the screenshot directly into a single-page vector PDF. */
+    private static void exportScreenshotPDF(Paintable target, File selectedFile, int width,
+                                            int height, boolean batch) throws IOException {
+        selectedFile = fixFileExt(selectedFile, new String[]{".pdf"}, "pdf");
+        try (OutputStream out = new BufferedOutputStream(new FileOutputStream(selectedFile))) {
+            // Text as shapes preserves the exact on-screen font appearance without requiring
+            // users to configure or embed platform fonts. Shapes, lines, fills, and text
+            // outlines remain vector objects in the PDF.
+            PDFDocumentGraphics2D pdf = new PDFDocumentGraphics2D(true, out, width, height);
+            pdf.setGraphicContext(new GraphicContext());
+            Color original = pdf.getColor();
+            pdf.setColor(Color.WHITE);
+            pdf.fillRect(0, 0, width, height);
+            pdf.setColor(original);
+            paintImage(target, pdf, width, height, batch);
+            pdf.finish();
         }
     }
 

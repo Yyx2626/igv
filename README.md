@@ -49,7 +49,7 @@ For the original, unmodified IGV project, visit
   prominent border (divider) between adjacent tracks, users can set its color
   to match the track background or set its height to 0 so adjacent tracks are
   displayed without an intervening border.
-- **Publication screenshot and data export:** export PNG or SVG figures, with
+- **Publication screenshot and data export:** export PNG, SVG, or PDF figures, with
   checkboxes that let users include or exclude the genomic coordinates at the
   top and the track names on the left. The underlying data of each exported
   track can also be exported to a matching binned TSV file. Average tracks
