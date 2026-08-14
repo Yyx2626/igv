@@ -113,8 +113,6 @@ public class AverageErrorBarDataSource implements DataSource {
             int end = boundaries[bb + 1];
 
             int present = 0; // members with an actual (non-NaN) score covering this bin
-            double sum = 0;
-            double sumSq = 0;
             float[] memberValues = new float[n];
 
             for (int m = 0; m < n; m++) {
@@ -130,15 +128,13 @@ public class AverageErrorBarDataSource implements DataSource {
                     }
                 }
                 memberValues[m] = v;
-                sum += v;
-                sumSq += (double) v * v;
             }
 
             if (present == 0) {
                 continue;
             }
 
-            result.add(buildStat(start, end, sum, sumSq, memberValues));
+            result.add(buildStat(start, end, memberValues));
         }
 
         return result;
@@ -178,8 +174,6 @@ public class AverageErrorBarDataSource implements DataSource {
             int end = boundaries[bb + 1];
 
             int present = 0;
-            double sum = 0;
-            double sumSq = 0;
             float[] rawValues = new float[n];
             Arrays.fill(rawValues, Float.NaN);
 
@@ -190,14 +184,11 @@ public class AverageErrorBarDataSource implements DataSource {
                 float raw = idx < scores.size() && scores.get(idx).getStart() < end
                         ? scores.get(idx).getScore() : Float.NaN;
                 rawValues[m] = raw;
-                float contribution = Float.isNaN(raw) ? naValue : raw;
                 if (!Float.isNaN(raw)) present++;
-                sum += contribution;
-                sumSq += (double) contribution * contribution;
             }
 
             if (present > 0) {
-                result.add(buildStat(start, end, sum, sumSq, rawValues,
+                result.add(buildStat(start, end, rawValues,
                         AverageErrorLocusScore.Group.RAW, naValue));
             }
         }
@@ -205,27 +196,20 @@ public class AverageErrorBarDataSource implements DataSource {
         return result;
     }
 
-    private static AverageErrorLocusScore buildStat(int start, int end, double sum, double sumSq,
-                                                    float[] memberValues) {
-        return buildStat(start, end, sum, sumSq, memberValues,
+    private static AverageErrorLocusScore buildStat(int start, int end, float[] memberValues) {
+        return buildStat(start, end, memberValues,
                 AverageErrorLocusScore.Group.NONE, 0f);
     }
 
-    private static AverageErrorLocusScore buildStat(int start, int end, double sum, double sumSq,
-                                                    float[] memberValues,
+    private static AverageErrorLocusScore buildStat(int start, int end, float[] memberValues,
                                                     AverageErrorLocusScore.Group group,
                                                     float missingValue) {
-        int n = memberValues.length;
-        float mean = (float) (sum / n);
-        float sd = Float.NaN;
-        float sem = Float.NaN;
-        if (n >= 2) {
-            double variance = (sumSq - n * (double) mean * mean) / (n - 1);
-            sd = (float) Math.sqrt(Math.max(0, variance));
-            sem = (float) (sd / Math.sqrt(n));
-        }
+        float[] stats = group == AverageErrorLocusScore.Group.RAW
+                ? AverageErrorStatistics.calculateReplacingNaN(memberValues, missingValue)
+                : AverageErrorStatistics.calculate(memberValues);
         return new AverageErrorLocusScore(
-                start, end, mean, sd, sem, n, memberValues, group, missingValue);
+                start, end, stats[0], stats[1], stats[2], memberValues.length,
+                memberValues, group, missingValue);
     }
 
     /**

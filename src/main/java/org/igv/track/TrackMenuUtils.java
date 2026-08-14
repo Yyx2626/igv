@@ -1220,8 +1220,10 @@ public class TrackMenuUtils {
     private static void showPairedDataRangeDialog(Collection<Track> selectedTracks) {
         TrackPairing.Partition partition = TrackPairing.partitionTopBottom(selectedTracks);
 
-        DataRange topDefaults = DataRange.getFromTracks(partition.top);
-        DataRange bottomDefaults = partition.bottom.isEmpty() ? topDefaults : DataRange.getFromTracks(partition.bottom);
+        DataRange topDefaults = partition.top.isEmpty()
+                ? null : DataRange.getFromTracks(partition.top);
+        DataRange bottomDefaults = partition.bottom.isEmpty()
+                ? null : DataRange.getFromTracks(partition.bottom);
 
         PairedDataRangeDialog dlg = new PairedDataRangeDialog(IGV.getInstance().getMainFrame(), topDefaults, bottomDefaults);
         dlg.setVisible(true);
@@ -1229,17 +1231,19 @@ public class TrackMenuUtils {
             return;
         }
 
-        DataRange topRange = dlg.getTopDataRange(topDefaults.isDrawBaseline());
-        DataRange bottomRange = dlg.getBottomDataRange(bottomDefaults.isDrawBaseline());
+        DataRange topRange = topDefaults == null
+                ? null : dlg.getTopDataRange(topDefaults.isDrawBaseline());
+        DataRange bottomRange = bottomDefaults == null
+                ? null : dlg.getBottomDataRange(bottomDefaults.isDrawBaseline());
 
         IGV.getInstance().runUndoableTrackChange("Set Paired Data Range", selectedTracks, () -> {
             for (Track track : partition.top) {
-                track.setDataRange(topRange);
+                track.setDataRange(topRange.copy());
                 track.setAutoScale(false);
                 track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
             }
             for (Track track : partition.bottom) {
-                track.setDataRange(bottomRange);
+                track.setDataRange(bottomRange.copy());
                 track.setAutoScale(false);
                 track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
             }

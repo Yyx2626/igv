@@ -270,6 +270,7 @@ public class AverageErrorBarTrack extends DataSourceTrack {
         }
         float min = Float.MAX_VALUE;
         float max = -Float.MAX_VALUE;
+        float baseline = getDataRange() == null ? 0 : getDataRange().getBaseline();
         for (LocusScore score : scores) {
             float value = score.getScore();
             if (Float.isNaN(value)) {
@@ -285,8 +286,9 @@ public class AverageErrorBarTrack extends DataSourceTrack {
                     }
                 }
             }
-            min = Math.min(min, value - err);
-            max = Math.max(max, value + err);
+            float[] span = errorBarStyle.dataSpan(baseline, value, err);
+            min = Math.min(min, span[0]);
+            max = Math.max(max, span[1]);
         }
         return min > max ? null : new Range(min, max);
     }

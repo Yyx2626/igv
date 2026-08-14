@@ -65,6 +65,25 @@ public class ErrorBarStyle {
         this.colorOverride = colorOverride;
     }
 
+    /**
+     * Returns the data-space span actually painted for one error bar. A T-shape uses
+     * only the outward half; an I-beam uses both halves but stops at the baseline on
+     * the inward side. Autoscaling and rendering share this method so an invisible
+     * half of an error bar cannot expand the displayed Data Range.
+     */
+    public float[] dataSpan(float baseline, float mean, float error) {
+        if (capStyle == CapStyle.SINGLE) {
+            return mean >= baseline
+                    ? new float[]{mean, mean + error}
+                    : new float[]{mean - error, mean};
+        }
+        float low = mean - error;
+        float high = mean + error;
+        if (mean >= baseline) low = Math.max(low, baseline);
+        else high = Math.min(high, baseline);
+        return new float[]{low, high};
+    }
+
     /** Copies every field from {@code other} onto this instance, for applying one "Error Bar Style..." dialog result to several selected tracks at once. */
     public void copyFrom(ErrorBarStyle other) {
         this.shape = other.shape;

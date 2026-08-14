@@ -31,14 +31,39 @@ public class PairedDataRangeDialog extends IGVDialog {
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
         content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
         content.add(topPanel);
-        content.add(Box.createVerticalStrut(10));
+
+        JButton copyDownButton = new JButton("\u2193");
+        JButton copyUpButton = new JButton("\u2191");
+        // Keep focus in the numeric field. On macOS, transferring focus through the
+        // input-method bridge can visibly delay an otherwise constant-time operation.
+        copyDownButton.setFocusable(false);
+        copyDownButton.setRequestFocusEnabled(false);
+        copyUpButton.setFocusable(false);
+        copyUpButton.setRequestFocusEnabled(false);
+        copyDownButton.setToolTipText("Flip the Top scale and apply it to Bottom");
+        copyUpButton.setToolTipText("Flip the Bottom scale and apply it to Top");
+        copyDownButton.addActionListener(e -> transferScale(topPanel, bottomPanel));
+        copyUpButton.addActionListener(e -> transferScale(bottomPanel, topPanel));
+        boolean transferEnabled = topDefaults != null && bottomDefaults != null;
+        copyDownButton.setEnabled(transferEnabled);
+        copyUpButton.setEnabled(transferEnabled);
+        JPanel transferPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 6, 0));
+        JLabel transferLabel = new JLabel("Auto apply:");
+        transferLabel.setEnabled(transferEnabled);
+        transferPanel.add(transferLabel);
+        transferPanel.add(copyDownButton);
+        transferPanel.add(copyUpButton);
+        content.add(Box.createVerticalStrut(4));
+        content.add(transferPanel);
+        content.add(Box.createVerticalStrut(4));
         content.add(bottomPanel);
         content.add(Box.createVerticalStrut(10));
 
         JButton okButton = new JButton("OK");
         JButton cancelButton = new JButton("Cancel");
         okButton.addActionListener(e -> {
-            if (topPanel.convertParms() && bottomPanel.convertParms()) {
+            if ((!topPanel.isEnabled() || topPanel.convertParms())
+                    && (!bottomPanel.isEnabled() || bottomPanel.convertParms())) {
                 setVisible(false);
             }
         });
@@ -63,11 +88,51 @@ public class PairedDataRangeDialog extends IGVDialog {
     }
 
     public DataRange getTopDataRange(boolean drawBaseline) {
-        return topPanel.toDataRange(drawBaseline);
+        return topPanel.isEnabled() ? topPanel.toDataRange(drawBaseline) : null;
     }
 
     public DataRange getBottomDataRange(boolean drawBaseline) {
-        return bottomPanel.toDataRange(drawBaseline);
+        return bottomPanel.isEnabled() ? bottomPanel.toDataRange(drawBaseline) : null;
+    }
+
+    private static void transferScale(RangeFieldsPanel source, RangeFieldsPanel target) {
+        // These are only the six numbers already displayed in the dialog. No track data
+        // is queried or autoscaled when an arrow is pressed.
+        if (!source.convertParms() || !target.convertParms()) return;
+        DataRange sourceRange = source.toDataRange(true);
+        DataRange targetRange = target.toDataRange(true);
+        float[] values = flippedScale(source.min, source.mid, source.max,
+                sourceRange, targetRange);
+        target.setValues(values[0], values[1], values[2], source.isLog);
+    }
+
+    /**
+     * Flips a scale for the other side of a pair. Opposite one-sided displayed ranges
+     * indicate opposite-signed data and therefore require sign inversion; otherwise the
+     * same values are retained while the axis endpoints are reversed.
+     */
+    static float[] flippedScale(float min, float mid, float max,
+                                DataRange sourceReference, DataRange targetReference) {
+        return rangesHaveOppositeSigns(sourceReference, targetReference)
+                ? new float[]{-max, -mid, -min}
+                : new float[]{max, mid, min};
+    }
+
+    static boolean rangesHaveOppositeSigns(DataRange first, DataRange second) {
+        int firstSign = oneSidedSign(first);
+        int secondSign = oneSidedSign(second);
+        return firstSign != 0 && secondSign != 0 && firstSign == -secondSign;
+    }
+
+    private static int oneSidedSign(DataRange range) {
+        if (range == null) return 0;
+        float low = Math.min(range.getMinimum(), range.getMaximum());
+        float high = Math.max(range.getMinimum(), range.getMaximum());
+        float scale = Math.max(Math.abs(low), Math.abs(high));
+        float tolerance = scale == 0 ? 0 : 8 * Math.ulp(scale);
+        if (low >= -tolerance && high > tolerance) return 1;
+        if (high <= tolerance && low < -tolerance) return -1;
+        return 0;
     }
 
     private static class RangeFieldsPanel extends JPanel {
@@ -103,6 +168,15 @@ public class PairedDataRangeDialog extends IGVDialog {
                 midField.setText(String.valueOf(mid));
                 maxField.setText(String.valueOf(max));
                 logCheckBox.setSelected(isLog);
+            } else {
+                setControlsEnabled(false);
+            }
+        }
+
+        private void setControlsEnabled(boolean enabled) {
+            setEnabled(enabled);
+            for (Component component : getComponents()) {
+                component.setEnabled(enabled);
             }
         }
 
@@ -137,6 +211,17 @@ public class PairedDataRangeDialog extends IGVDialog {
             float hi = Math.max(min, max);
             float m = Math.max(lo, Math.min(mid, hi));
             return new DataRange(min, m, max, drawBaseline, isLog);
+        }
+
+        void setValues(float min, float mid, float max, boolean isLog) {
+            this.min = min;
+            this.mid = mid;
+            this.max = max;
+            this.isLog = isLog;
+            minField.setText(String.valueOf(min));
+            midField.setText(String.valueOf(mid));
+            maxField.setText(String.valueOf(max));
+            logCheckBox.setSelected(isLog);
         }
     }
 }

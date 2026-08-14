@@ -45,7 +45,9 @@ For the original, unmodified IGV project, visit
   foreground colors, and support nested transformations.
 - **Customizable appearance:** users can control the colors and heights of
   tracks, data-range mid-lines, and borders (dividers), globally or per track,
-  to prepare consistent publication-quality figures.
+  to prepare consistent publication-quality figures. Divider controls make it
+  possible to use subtle separators, or borders matching the track background,
+  instead of visually dominant dark lines in exported figures.
 - **Publication screenshot and data export:** export PNG or SVG figures, with
   checkboxes that let users include or exclude the genomic coordinates at the
   top and the track names on the left. The underlying data of each exported
@@ -72,6 +74,16 @@ For the original, unmodified IGV project, visit
 - Made fixed-bin Mean/Maximum/Minimum/Absolute Maximum values use the exact raw
   interval. bigWig pyramid summaries remain available only where their native
   record boundaries do not make the requested final bin ambiguous.
+- Made Average-track autoscaling follow the error bar that is actually drawn:
+  T-style bars expand only outward, while I-style bars stop at the mid-line on
+  their inward side. Numerically stable mean/SD/SEM calculations also prevent
+  floating-point tails from turning a theoretical zero into a tiny opposite-
+  signed Data Range value.
+- Added **Auto apply** arrows between Top and Bottom in the paired Data Range
+  dialog. They copy a flipped scale using either `(max, mid, min)` or
+  `(-max, -mid, -min)` according to the displayed ranges; when only one side of
+  pairs is selected, the absent side and Auto apply controls remain blank and
+  disabled.
 - Made **None** windowing show the true envelope rather than a smoothed average:
   each bin shows the actual maximum above baseline and/or minimum below it,
   including separate positive and negative sides when both exist. Average

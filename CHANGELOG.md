@@ -5,6 +5,19 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
 
 ## August 13, 2026
 
+- Fixed Average-track autoscaling to use the error-bar span actually rendered.
+  T-style bars now affect the scale only from the mean outward; I-style bars
+  retain both halves but stop at the mid-line on the inward side. Shared,
+  numerically stable mean/SD/SEM calculation removes false near-zero opposite-
+  signed limits such as `+/-4.7683716E-7` without applying an arbitrary numeric
+  threshold.
+- Added **Auto apply** down/up arrows to the paired Data Range dialog. The
+  operation reads only the six displayed fields and chooses `(max, mid, min)`
+  for same-signed ranges or `(-max, -mid, -min)` for opposite-signed ranges.
+  The buttons avoid macOS input-method focus delays. Top-only or Bottom-only
+  selections now leave the absent side blank and disabled, disable Auto apply,
+  and no longer expose empty-collection sentinel values or apply settings to a
+  nonexistent side.
 - Added **Only export selected tracks** to Save Screenshot. The option is
   disabled when nothing is selected and filters both the compact PNG/SVG image
   and its optional TSV using the same track snapshot. Track context menus now

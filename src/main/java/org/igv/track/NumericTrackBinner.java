@@ -1,6 +1,7 @@
 package org.igv.track;
 
 import org.igv.data.AverageErrorLocusScore;
+import org.igv.data.AverageErrorStatistics;
 import org.igv.data.BasicScore;
 import org.igv.feature.LocusScore;
 
@@ -91,7 +92,7 @@ public final class NumericTrackBinner {
                 float sem = semWeight == 0 ? Float.NaN : (float) (semSum / semWeight);
                 float[] memberValues = aggregatedMemberValues(memberSums, memberWeights);
                 if (memberValues != null) {
-                    float[] stats = statistics(memberValues);
+                    float[] stats = AverageErrorStatistics.calculate(memberValues);
                     value = stats[0];
                     sd = stats[1];
                     sem = stats[2];
@@ -220,7 +221,7 @@ public final class NumericTrackBinner {
                 }
             }
             if (!anyData) continue;
-            float[] stats = statistics(contributions);
+            float[] stats = AverageErrorStatistics.calculate(contributions);
             result.add(new AverageErrorLocusScore(binStart, binEnd, stats[0], stats[1], stats[2],
                     contributions.length, contributions, AverageErrorLocusScore.Group.NONE, missingValue));
         }
@@ -391,7 +392,7 @@ public final class NumericTrackBinner {
         for (int i = 0; i < contributions.length; i++) {
             if (Float.isNaN(contributions[i])) contributions[i] = missingValue;
         }
-        float[] stats = statistics(contributions);
+        float[] stats = AverageErrorStatistics.calculate(contributions);
         return new AverageErrorLocusScore(start, end, stats[0], stats[1], stats[2],
                 contributions.length, contributions, group, missingValue);
     }
@@ -403,25 +404,6 @@ public final class NumericTrackBinner {
             values[i] = weights[i] == 0 ? Float.NaN : (float) (sums[i] / weights[i]);
         }
         return values;
-    }
-
-    /** Returns mean, sample SD, and SEM for the exact member values represented by a bin. */
-    private static float[] statistics(float[] values) {
-        double sum = 0;
-        double sumSq = 0;
-        int n = 0;
-        for (float value : values) {
-            if (Float.isNaN(value)) continue;
-            sum += value;
-            sumSq += (double) value * value;
-            n++;
-        }
-        if (n == 0) return new float[]{Float.NaN, Float.NaN, Float.NaN};
-        float mean = (float) (sum / n);
-        if (n < 2) return new float[]{mean, Float.NaN, Float.NaN};
-        double variance = (sumSq - n * (double) mean * mean) / (n - 1);
-        float sd = (float) Math.sqrt(Math.max(0, variance));
-        return new float[]{mean, sd, (float) (sd / Math.sqrt(n))};
     }
 
     private static int overlap(LocusScore score, int start, int end) {

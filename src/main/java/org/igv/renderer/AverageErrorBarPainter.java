@@ -149,10 +149,9 @@ final class AverageErrorBarPainter {
         // Keep the uncertainty marker on the same side of the baseline as its mean.
         // In particular, SVG exposes even a small symmetric mean +/- error extension
         // beyond the gray midline that raster output can visually hide beneath the line.
-        float low = mean - err;
-        float high = mean + err;
-        if (mean >= baseline) low = Math.max(low, baseline);
-        else high = Math.min(high, baseline);
+        float[] dataSpan = style.dataSpan(baseline, mean, err);
+        float low = dataSpan[0];
+        float high = dataSpan[1];
         int yLo = (int) toPixel.applyAsDouble(low);
         int yHi = (int) toPixel.applyAsDouble(high);
 
