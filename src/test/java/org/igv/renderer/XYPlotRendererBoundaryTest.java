@@ -1,5 +1,7 @@
 package org.igv.renderer;
 
+import org.igv.Globals;
+import org.igv.DirectoryManager;
 import org.igv.data.AverageErrorLocusScore;
 import org.igv.data.BasicScore;
 import org.igv.feature.LocusScore;
@@ -8,19 +10,34 @@ import org.igv.track.ErrorBarType;
 import org.igv.track.RenderContext;
 import org.igv.ui.panel.ReferenceFrame;
 import org.junit.Test;
+import org.junit.BeforeClass;
 
 import java.awt.Graphics2D;
+import java.awt.Color;
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.util.Collections;
 import java.util.function.DoubleUnaryOperator;
+import javax.swing.JPanel;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 
 public class XYPlotRendererBoundaryTest {
 
+    @BeforeClass
+    public static void configureHeadlessIGV() {
+        Globals.setHeadless(true);
+        File testIgvDirectory = new File("build/test-igv");
+        if (!testIgvDirectory.isDirectory() && !testIgvDirectory.mkdirs()) {
+            throw new IllegalStateException("Cannot create test IGV directory: " + testIgvDirectory);
+        }
+        DirectoryManager.setIgvDirectory(testIgvDirectory);
+    }
+
     @Test
-    public void bottomAxisAndPositiveBarsShareLastPaintableRow() {
+    public void bottomAxisAndPositiveBarsUseLastOwnedPixelRow() {
         Rectangle track = new Rectangle(0, 5, 100, 20);
 
         assertEquals(24, XYPlotRenderer.clampYPixel(track, 25));
@@ -41,11 +58,43 @@ public class XYPlotRendererBoundaryTest {
     }
 
     @Test
+    public void fractionalCoordinatesRoundSymmetricallyAroundBaseline() {
+        Rectangle track = new Rectangle(0, 0, 100, 100);
+        int baseline = 50;
+
+        assertEquals(10, baseline - XYPlotRenderer.clampYPixel(track, baseline - 10.25));
+        assertEquals(10, XYPlotRenderer.clampYPixel(track, baseline + 10.25) - baseline);
+        assertEquals(10, baseline - XYPlotRenderer.clampYPixel(track, baseline - 10.5));
+        assertEquals(10, XYPlotRenderer.clampYPixel(track, baseline + 10.5) - baseline);
+    }
+
+    @Test
+    public void identicalValuesHaveEqualHeightsOnNormalAndFlippedTracks() {
+        Rectangle normalTrack = new Rectangle(0, 0, 100, 60);
+        Rectangle flippedTrack = new Rectangle(0, 60, 100, 60);
+        DataRange normalRange = new DataRange(0, 0, 16);
+        DataRange flippedRange = normalRange.flipped();
+        int normalBaseline = XYPlotRenderer.dataYPixel(normalTrack, normalRange, 0);
+        int flippedBaseline = XYPlotRenderer.dataYPixel(flippedTrack, flippedRange, 0);
+
+        assertEquals(59, normalBaseline);
+        assertEquals(60, flippedBaseline);
+        for (int value = 1; value <= 16; value++) {
+            int upwardHeight = normalBaseline -
+                    XYPlotRenderer.dataYPixel(normalTrack, normalRange, value);
+            int downwardHeight = XYPlotRenderer.dataYPixel(flippedTrack, flippedRange, value) -
+                    flippedBaseline;
+            assertEquals("value " + value + " must have the same height in both directions",
+                    upwardHeight, downwardHeight);
+        }
+    }
+
+    @Test
     public void positiveBarBottomStopsExactlyAtAxis() {
         Rectangle bar = BarChartRenderer.barBounds(10, 4, 50, 20);
 
         assertEquals(20, bar.y);
-        assertEquals(50, bar.getMaxY(), 0);
+        assertEquals(51, bar.getMaxY(), 0);
     }
 
     @Test
@@ -53,8 +102,86 @@ public class XYPlotRendererBoundaryTest {
         Rectangle bar = BarChartRenderer.barBounds(10, 1, 50, 80);
 
         assertEquals(50, bar.y);
-        assertEquals(80, bar.getMaxY(), 0);
+        assertEquals(81, bar.getMaxY(), 0);
         assertEquals(1, bar.width);
+    }
+
+    @Test
+    public void barEndpointAtBottomBoundaryFillsLastInteriorRowWithoutOvershoot() {
+        BufferedImage image = new BufferedImage(20, 30, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = image.createGraphics();
+        Rectangle bounds = new Rectangle(0, 5, 20, 20);
+        graphics.setClip(bounds);
+        RenderContext context = new RenderContext(null, graphics,
+                new ReferenceFrame("test"), bounds, bounds, bounds);
+        context.setViewTransform(0, 20, 1);
+        org.igv.track.DataSourceTrack track =
+                new org.igv.track.DataSourceTrack(null, "t", "t", null);
+        track.setDataRange(new DataRange(0, 0, 1f));
+
+        new BarChartRenderer().renderScores(track,
+                Collections.singletonList((LocusScore) new BasicScore(0, 10, 1f)), context, bounds);
+
+        assertNotEquals("bar must reach the last interior row", 0, image.getRGB(5, 24));
+        assertEquals("bar must not cross the geometric boundary", 0, image.getRGB(5, 25));
+        context.dispose();
+        graphics.dispose();
+    }
+
+    @Test
+    public void standaloneScreenBaselineAtBottomRemainsVisible() {
+        BufferedImage image = new BufferedImage(20, 30, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = image.createGraphics();
+        Rectangle bounds = new Rectangle(0, 5, 20, 20);
+        graphics.setClip(bounds);
+        RenderContext context = new RenderContext(new JPanel(), graphics,
+                new ReferenceFrame("test"), bounds, bounds, bounds);
+        org.igv.track.DataSourceTrack track =
+                new org.igv.track.DataSourceTrack(null, "t", "t", null);
+        track.setDataRange(new DataRange(0, 0, 1f, true));
+
+        new BarChartRenderer().renderGuides(track, context, bounds);
+
+        assertEquals(DataRange.DEFAULT_MIDLINE_COLOR.getRGB(), image.getRGB(10, 24));
+        assertEquals(0, image.getRGB(10, 25));
+        context.dispose();
+        graphics.dispose();
+    }
+
+    @Test
+    public void adjacentTracksKeepTheirOwnEdgeBaselineRows() {
+        BufferedImage image = new BufferedImage(20, 45, BufferedImage.TYPE_INT_ARGB);
+        Rectangle topBounds = new Rectangle(0, 5, 20, 20);
+        Rectangle bottomBounds = new Rectangle(0, 25, 20, 20);
+        ReferenceFrame frame = new ReferenceFrame("test");
+
+        Graphics2D topGraphics = image.createGraphics();
+        topGraphics.setClip(topBounds);
+        RenderContext topContext = new RenderContext(null, topGraphics, frame,
+                topBounds, topBounds, topBounds);
+        org.igv.track.DataSourceTrack topTrack =
+                new org.igv.track.DataSourceTrack(null, "top", "top", null);
+        topTrack.setDataRange(new DataRange(0, 0, 1f, true));
+        new BarChartRenderer().renderGuides(topTrack, topContext, topBounds);
+
+        Graphics2D bottomGraphics = image.createGraphics();
+        bottomGraphics.setClip(bottomBounds);
+        RenderContext bottomContext = new RenderContext(null, bottomGraphics, frame,
+                bottomBounds, bottomBounds, bottomBounds);
+        org.igv.track.DataSourceTrack bottomTrack =
+                new org.igv.track.DataSourceTrack(null, "bottom", "bottom", null);
+        bottomTrack.setDataRange(new DataRange(-1f, 1f, 1f, true));
+        new BarChartRenderer().renderGuides(bottomTrack, bottomContext, bottomBounds);
+
+        assertEquals("top track owns and paints its last row",
+                DataRange.DEFAULT_MIDLINE_COLOR.getRGB(), image.getRGB(10, 24));
+        assertEquals("bottom track owns and paints its first row",
+                DataRange.DEFAULT_MIDLINE_COLOR.getRGB(), image.getRGB(10, 25));
+        assertEquals("row below the shared boundary must remain clear", 0, image.getRGB(10, 26));
+        topContext.dispose();
+        bottomContext.dispose();
+        topGraphics.dispose();
+        bottomGraphics.dispose();
     }
 
     @Test
@@ -114,7 +241,7 @@ public class XYPlotRendererBoundaryTest {
     }
 
     @Test
-    public void barModeYPixelAtBaselineSharesLastPaintableRowWithMidline() {
+    public void barModeYPixelAtBaselineSharesGeometricBoundaryWithMidline() {
         // All-non-negative track (baseline == minimum == 0), matching the common case where
         // a positive-only error bar's low end is clamped to the baseline in data space.
         Rectangle track = new Rectangle(0, 5, 100, 20);
@@ -123,38 +250,80 @@ public class XYPlotRendererBoundaryTest {
         int baselinePixel = AverageErrorBarPainter.barModeYPixel(track, dataRange, 0f);
         int midlinePixel = XYPlotRenderer.clampYPixel(track, track.getY() + track.getHeight());
 
-        assertEquals("error bar clamped to baseline must land on the same row as the midline, "
-                + "not one row past it (which SVG/PDF export renders as an overshoot below the line)",
+        assertEquals("error bar and midline must use the same geometry boundary, "
+                + "while their painters independently respect the track clip",
                 midlinePixel, baselinePixel);
         assertEquals(24, baselinePixel);
     }
 
     @Test
-    public void barModeYPixelMatchesUnclampedBaseReferenceAwayFromBaseline() {
-        // With dataY away from the baseline, clamping baseY before subtracting the delta
-        // (instead of clamping only the final pixel, like XYPlotRenderer.renderScores() does)
-        // would shift this result by a pixel relative to where the mean bar itself actually
-        // gets drawn, breaking the "sits flush against the mean bar" contract this method
-        // documents. yScaleFactor is exactly 1 here (height 20 over a 0..20 range) so the
-        // expected pixel is exact, with no float-rounding ambiguity.
+    public void barModeYPixelUsesOneFinalConversionAwayFromBaseline() {
+        // The 20-pixel track owns 19 intervals between its 20 pixel centers.
         Rectangle track = new Rectangle(0, 5, 100, 20);
         DataRange dataRange = new DataRange(0, 0, 20f);
 
-        assertEquals(17, AverageErrorBarPainter.barModeYPixel(track, dataRange, 8f));
+        assertEquals(16, AverageErrorBarPainter.barModeYPixel(track, dataRange, 8f));
     }
 
     @Test
-    public void degenerateErrorBarIsSkippedRatherThanDrawnPastBaseline() {
-        // End-to-end: a low-signal bin on a track with a wide dynamic range (much taller peaks
-        // elsewhere) rounds its error span to less than a single pixel. Rather than forcing a
-        // visible 1px mark - which used to grow unconditionally downward and could poke past the
-        // gray midline in SVG/PDF export - nothing should be painted for this bin's error bar at
-        // all, matching how BarChartRenderer.drawDataPoint() already skips a zero-height mean bar.
+    public void fractionalHeightIsConvertedToIntegerOnlyAtTheEnd() {
+        Rectangle track = new Rectangle(0, 5, 100, 20);
+        DataRange dataRange = new DataRange(0, 0, 3f);
+
+        // Baseline row = 24; the rounded distance for value 1 is 6 rows.
+        assertEquals(18, AverageErrorBarPainter.barModeYPixel(track, dataRange, 1f));
+    }
+
+    @Test
+    public void interiorBaselineIsDrawnOnlyOnce() {
         BufferedImage image = new BufferedImage(20, 30, BufferedImage.TYPE_INT_ARGB);
         Graphics2D graphics = image.createGraphics();
         ReferenceFrame frame = new ReferenceFrame("test");
         Rectangle bounds = new Rectangle(0, 5, 20, 20);
         RenderContext context = new RenderContext(null, graphics, frame, bounds, bounds, bounds);
+        org.igv.track.DataSourceTrack track =
+                new org.igv.track.DataSourceTrack(null, "t", "t", null);
+        DataRange range = new DataRange(-1, 0, 1, true);
+        range.setMidlineColor(new Color(100, 100, 100, 128));
+        track.setDataRange(range);
+
+        new BarChartRenderer().renderGuides(track, context, bounds);
+
+        int baselineY = XYPlotRenderer.clampYPixel(bounds, 15);
+        assertEquals("a half-transparent baseline drawn once must retain alpha 128",
+                128, new Color(image.getRGB(10, baselineY), true).getAlpha());
+        context.dispose();
+        graphics.dispose();
+    }
+
+    @Test
+    public void disabledBaselineIsNotDrawn() {
+        BufferedImage image = new BufferedImage(20, 30, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = image.createGraphics();
+        ReferenceFrame frame = new ReferenceFrame("test");
+        Rectangle bounds = new Rectangle(0, 5, 20, 20);
+        RenderContext context = new RenderContext(null, graphics, frame, bounds, bounds, bounds);
+        org.igv.track.DataSourceTrack track =
+                new org.igv.track.DataSourceTrack(null, "t", "t", null);
+        track.setDataRange(new DataRange(-1, 0, 1, false));
+
+        new BarChartRenderer().renderGuides(track, context, bounds);
+
+        assertEquals(0, image.getRGB(10, 15));
+        context.dispose();
+        graphics.dispose();
+    }
+
+    @Test
+    public void onePixelErrorBarStopsAtGeometricBaseline() {
+        // A low-signal error span can occupy the final interior row, but its rectangle endpoint
+        // is the shared geometry baseline and therefore must not paint across that boundary.
+        BufferedImage image = new BufferedImage(20, 30, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = image.createGraphics();
+        ReferenceFrame frame = new ReferenceFrame("test");
+        Rectangle bounds = new Rectangle(0, 5, 20, 20);
+        RenderContext context = new RenderContext(null, graphics, frame, bounds, bounds, bounds);
+        context.setViewTransform(0, 20, 1);
 
         AverageErrorBarTrack track = new AverageErrorBarTrack("t", "t");
         track.setDataRange(new DataRange(0, 0, 100f));
@@ -163,14 +332,16 @@ public class XYPlotRendererBoundaryTest {
         style.setShape(ErrorBarStyle.Shape.BAR);
         style.setCapStyle(ErrorBarStyle.CapStyle.DOUBLE);
         track.setErrorBarStyle(style);
-        AverageErrorLocusScore score = new AverageErrorLocusScore(0, 10, 1f, 1f, 1f, 2);
+        AverageErrorLocusScore score = new AverageErrorLocusScore(0, 10, 2f, 2f, 2f, 2);
 
         AverageErrorBarPainter.drawErrorBars(track, Collections.singletonList((LocusScore) score),
                 context, bounds, new BarChartRenderer());
 
+        assertNotEquals("the one-pixel error span should end immediately above the baseline",
+                0, image.getRGB(1, 23));
+        assertEquals("the baseline row is not crossed", 0, image.getRGB(1, 24));
         for (int x = 0; x < image.getWidth(); x++) {
-            assertEquals("baseline row must stay untouched", 0, image.getRGB(x, 24));
-            assertEquals("row past the baseline must stay untouched", 0, image.getRGB(x, 25));
+            assertEquals("the geometric baseline must not be crossed", 0, image.getRGB(x, 25));
         }
         context.dispose();
         graphics.dispose();
@@ -195,8 +366,6 @@ public class XYPlotRendererBoundaryTest {
         BarChartRenderer renderer = new BarChartRenderer();
 
         renderer.renderScores(track, Collections.singletonList((LocusScore) lowSignal), context, bounds);
-        renderer.renderGuides(track, context, bounds);
-
         int paintedBelowMidline = 0;
         for (int y = 25; y < image.getHeight(); y++) {
             for (int x = 0; x < image.getWidth(); x++) {
@@ -229,12 +398,7 @@ public class XYPlotRendererBoundaryTest {
     }
 
     @Test
-    public void errorPixelSpanCanBeDegenerateOnAWideDynamicRangeTrack() {
-        // A track with a wide dynamic range (0..100, e.g. because it also has much taller peaks
-        // elsewhere) makes a modest mean+error - tiny relative to the full range, though not
-        // literally zero - round to the exact same pixel row as the baseline itself once scaled.
-        // This is the actual mechanism behind the reported bug: a low-signal bin's error mark
-        // rounding degenerate, not a mistake in the baseline-clamping math itself.
+    public void subpixelErrorSpanCollapsesOntoBaselineRow() {
         Rectangle track = new Rectangle(0, 5, 100, 20);
         DataRange wideRange = new DataRange(0, 0, 100f);
         DoubleUnaryOperator toPixel = dataY -> AverageErrorBarPainter.barModeYPixel(track, wideRange, (float) dataY);
@@ -244,7 +408,7 @@ public class XYPlotRendererBoundaryTest {
         int[] span = AverageErrorBarPainter.errorPixelSpan(toPixel, 0, 1f, 1f, style);
 
         assertEquals(24, span[0]);
-        assertEquals("low and high both round to the baseline's own pixel row - degenerate", 24, span[1]);
+        assertEquals("both endpoints round to the baseline row", 24, span[1]);
         assertEquals("mean is above the baseline, so growth must go upward, away from it", 1, span[2]);
     }
 }

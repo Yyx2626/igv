@@ -20,7 +20,7 @@ public final class ScreenshotDialog {
     public record Options(File outputPrefix, ImageFileTypes.Type format,
                           boolean includeCoordinates, boolean includeTrackNames,
                           boolean outputDataTsv, boolean addCoordinateRange,
-                          boolean onlySelectedTracks) {
+                          boolean onlySelectedTracks, int pngScaleMultiplier) {
         private String outputStem() {
             String suffix = addCoordinateRange ? ScreenshotFilename.currentCoordinateSuffix() : "";
             return outputPrefix.getAbsolutePath() + (suffix.isEmpty() ? "" : "." + suffix);
@@ -32,6 +32,10 @@ public final class ScreenshotDialog {
 
         public File dataFile() {
             return new File(outputStem() + ".tsv");
+        }
+
+        public double pngRasterScale() {
+            return pngScaleMultiplier;
         }
     }
 
@@ -63,6 +67,25 @@ public final class ScreenshotDialog {
             }
         });
         if (previous != null) formatBox.setSelectedItem(previous.format());
+        JSlider pngScaleSlider = new JSlider(1, 8,
+                previous == null ? 2 : previous.pngScaleMultiplier());
+        pngScaleSlider.setMajorTickSpacing(1);
+        pngScaleSlider.setSnapToTicks(true);
+        pngScaleSlider.setPaintTicks(true);
+        pngScaleSlider.setPaintLabels(true);
+        java.util.Hashtable<Integer, JLabel> pngScaleLabels = new java.util.Hashtable<>();
+        for (int scale = 1; scale <= 8; scale++) {
+            pngScaleLabels.put(scale, new JLabel(scale + "x"));
+        }
+        pngScaleSlider.setLabelTable(pngScaleLabels);
+        JLabel pngScaleLabel = new JLabel("PNG resolution");
+        Runnable updatePngScaleEnabled = () -> {
+            boolean png = formatBox.getSelectedItem() == ImageFileTypes.Type.PNG;
+            pngScaleLabel.setEnabled(png);
+            pngScaleSlider.setEnabled(png);
+        };
+        formatBox.addActionListener(e -> updatePngScaleEnabled.run());
+        updatePngScaleEnabled.run();
         JCheckBox includeCoordinates = new JCheckBox("Include top genomic coordinates",
                 previous == null || previous.includeCoordinates());
         JCheckBox includeTrackNames = new JCheckBox("Include track names",
@@ -133,6 +156,12 @@ public final class ScreenshotDialog {
         c.gridy++;
         c.gridx = 0;
         c.weightx = 0;
+        panel.add(pngScaleLabel, c);
+        c.gridx = 1;
+        panel.add(pngScaleSlider, c);
+        c.gridy++;
+        c.gridx = 0;
+        c.weightx = 0;
         panel.add(new JLabel("Output options"), c);
         c.gridx = 1;
         c.weightx = 1;
@@ -166,7 +195,8 @@ public final class ScreenshotDialog {
             File prefixFile = stripKnownExtension(new File(prefix));
             Options options = new Options(prefixFile, (ImageFileTypes.Type) formatBox.getSelectedItem(),
                     includeCoordinates.isSelected(), includeTrackNames.isSelected(), outputData.isSelected(),
-                    addCoordinateRange.isSelected(), onlySelectedTracks.isSelected());
+                    addCoordinateRange.isSelected(), onlySelectedTracks.isSelected(),
+                    pngScaleSlider.getValue());
             lastAcceptedOptions = options;
             return options;
         }
@@ -181,4 +211,5 @@ public final class ScreenshotDialog {
         }
         return file;
     }
+
 }

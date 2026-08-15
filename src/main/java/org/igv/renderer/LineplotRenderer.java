@@ -51,11 +51,8 @@ public class LineplotRenderer extends XYPlotRenderer {
         float minValue = (float) axisDefinition.getMinimum();
 
         // Calculate the Y scale factor.
-        double yScaleFactor = rect.getHeight() / (maxValue - minValue);
-
-
         int lastPx = (int) ((locusScores.get(0).getStart() - origin) / locScale);
-        int lastPy = (int) (rect.getY() + (maxValue - 0) * yScaleFactor);
+        int lastPy = computeYPixelValue(rect, axisDefinition, 0);
 
         for (LocusScore score : locusScores) {
 
@@ -66,13 +63,14 @@ public class LineplotRenderer extends XYPlotRenderer {
                 double x = ((score.getStart() - origin) / locScale);
                 double dx = (score.getEnd() - score.getStart()) / locScale;
                 int pX = (int) x;
-                int pY = (int) (rect.getY() + (maxValue - dataY) * yScaleFactor);
+                int pY = computeYPixelValue(rect, axisDefinition, dataY);
                 double slope = ((double) pY - lastPy) / (pX - lastPx);
 
                 int clippedLastPX = lastPx;
                 int clippedLastPY = lastPy;
-                if (lastPy < rect.y || lastPy > (rect.y + rect.height)) {
-                    clippedLastPY = (lastPy < rect.y) ? rect.y : rect.y + rect.height;
+                int lastRow = rect.y + Math.max(0, rect.height - 1);
+                if (lastPy < rect.y || lastPy > lastRow) {
+                    clippedLastPY = (lastPy < rect.y) ? rect.y : lastRow;
                     clippedLastPX = lastPx + (int) ((clippedLastPY - lastPy) / slope);
                 }
 
@@ -80,8 +78,8 @@ public class LineplotRenderer extends XYPlotRenderer {
                 int clippedPY = pY;
 
                 // Clip and interpolate if neccessary
-                if (pY < rect.y || pY > (rect.y + rect.height)) {
-                    clippedPY = (pY < rect.getMinY()) ? rect.y : rect.y + rect.height;
+                if (pY < rect.y || pY > lastRow) {
+                    clippedPY = (pY < rect.getMinY()) ? rect.y : lastRow;
                     clippedPX = lastPx + (int) ((clippedPY - lastPy) / slope);
                 }
 

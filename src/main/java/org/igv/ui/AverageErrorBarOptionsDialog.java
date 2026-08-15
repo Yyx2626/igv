@@ -1,14 +1,16 @@
 package org.igv.ui;
 
+import org.igv.renderer.ScatterPointStyle;
 import org.igv.track.ErrorBarType;
 import org.igv.track.WindowFunction;
+import org.igv.ui.action.AverageErrorBarMenuAction;
 
 import javax.swing.*;
 import java.awt.*;
 
 /**
  * Shown when the user chooses "Average With Error Bar..." from the track context menu.
- * A 3-row, 2-column table: label column (left-aligned) then control column
+ * A two-column table: label column (left-aligned) then control column
  * (left-aligned), in the order the user reasons about them - what value to substitute
  * for a missing member ("NA", i.e. a member with no data covering a given bin - defaults
  * to 0, so a gap in one bigwig counts as an observed zero rather than shrinking the
@@ -16,7 +18,8 @@ import java.awt.*;
  * before averaging (defaults to the members' own shared setting if they agree, else
  * Mean; "None" reports each member's actual max where it's positive and min where it's
  * negative - see {@code AverageErrorBarDataSource}'s class javadoc), and which error-bar
- * statistic to draw (SEM / SD / None).
+ * statistic to draw (SEM / SD / None), the minimum N required to draw it, and
+ * whether to overlay the contributing member values as scatter points.
  */
 public class AverageErrorBarOptionsDialog extends IGVDialog {
 
@@ -24,11 +27,37 @@ public class AverageErrorBarOptionsDialog extends IGVDialog {
     private float naValue = 0f;
     private WindowFunction windowFunction;
     private ErrorBarType errorBarType = ErrorBarType.SEM;
+    private int minimumErrorBarN = 2;
+    private boolean scatterPointsEnabled;
+    private final ScatterPointStyle scatterPointStyle;
+    private final Color defaultScatterPositive;
+    private final Color defaultScatterNegative;
+    private final int scatterRepeatCount;
     private final JTextField naField;
 
     public AverageErrorBarOptionsDialog(Frame parent, WindowFunction defaultWindowFunction) {
+        this(parent, defaultWindowFunction, null, null, new ScatterPointStyle(), 1);
+    }
+
+    public AverageErrorBarOptionsDialog(Frame parent, WindowFunction defaultWindowFunction,
+                                        Color defaultScatterPositive,
+                                        Color defaultScatterNegative) {
+        this(parent, defaultWindowFunction, defaultScatterPositive,
+                defaultScatterNegative, new ScatterPointStyle(), 1);
+    }
+
+    public AverageErrorBarOptionsDialog(Frame parent, WindowFunction defaultWindowFunction,
+                                        Color defaultScatterPositive,
+                                        Color defaultScatterNegative,
+                                        ScatterPointStyle defaultScatterPointStyle,
+                                        int scatterRepeatCount) {
         super(parent, true);
         this.windowFunction = defaultWindowFunction;
+        this.defaultScatterPositive = defaultScatterPositive;
+        this.defaultScatterNegative = defaultScatterNegative;
+        this.scatterPointStyle = defaultScatterPointStyle == null
+                ? new ScatterPointStyle() : defaultScatterPointStyle.copy();
+        this.scatterRepeatCount = Math.max(1, scatterRepeatCount);
         setTitle("Average With Error Bar");
         setLocationRelativeTo(parent);
 
@@ -83,6 +112,24 @@ public class AverageErrorBarOptionsDialog extends IGVDialog {
         ebPanel.add(noneButton);
         addRow(content, labelC, controlC, 2, "Error bar:", ebPanel);
 
+        JSpinner minimumNSpinner = new JSpinner(new SpinnerNumberModel(2, 1, 999, 1));
+        addRow(content, labelC, controlC, 3, "Plot SD/SEM only when N ≥", minimumNSpinner);
+
+        JButton scatterSettingsButton = new JButton("Settings...");
+        scatterSettingsButton.addActionListener(e -> {
+            scatterPointStyle.initializeDefaultsForFirstSettingsOpen(
+                    AverageErrorBarMenuAction.estimateCurrentBinWidthPixels(),
+                    scatterRepeatCount);
+            ScatterPointStyleDialog dialog = new ScatterPointStyleDialog(
+                    parent, scatterPointsEnabled, scatterPointStyle,
+                    this.defaultScatterPositive, this.defaultScatterNegative);
+            dialog.setVisible(true);
+            if (!dialog.isCanceled()) {
+                scatterPointsEnabled = dialog.isScatterPointsEnabled();
+            }
+        });
+        addRow(content, labelC, controlC, 4, "Scatter points:", scatterSettingsButton);
+
         JButton okButton = new JButton("OK");
         JButton cancelButton = new JButton("Cancel");
         okButton.addActionListener(e -> {
@@ -93,6 +140,7 @@ public class AverageErrorBarOptionsDialog extends IGVDialog {
                         "Invalid value", JOptionPane.ERROR_MESSAGE);
                 return;
             }
+            minimumErrorBarN = (Integer) minimumNSpinner.getValue();
             setVisible(false);
         });
         cancelButton.addActionListener(e -> {
@@ -106,7 +154,7 @@ public class AverageErrorBarOptionsDialog extends IGVDialog {
         buttonPanel.add(okButton);
         GridBagConstraints buttonC = new GridBagConstraints();
         buttonC.gridx = 0;
-        buttonC.gridy = 3;
+        buttonC.gridy = 5;
         buttonC.gridwidth = 2;
         buttonC.fill = GridBagConstraints.HORIZONTAL;
         buttonC.insets = new Insets(10, 0, 0, 0);
@@ -139,5 +187,17 @@ public class AverageErrorBarOptionsDialog extends IGVDialog {
 
     public ErrorBarType getErrorBarType() {
         return errorBarType;
+    }
+
+    public int getMinimumErrorBarN() {
+        return minimumErrorBarN;
+    }
+
+    public boolean isScatterPointsEnabled() {
+        return scatterPointsEnabled;
+    }
+
+    public ScatterPointStyle getScatterPointStyle() {
+        return scatterPointStyle.copy();
     }
 }

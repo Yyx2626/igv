@@ -28,14 +28,15 @@ public class PointsRenderer extends XYPlotRenderer {
         this.pointsSize = pointsSize;
     }
 
-    protected void drawDataPoint(Color graphColor, int dx, int pX, int baseY, int pY, LocusScore score, RenderContext context) {
+    protected void drawDataPoint(Color graphColor, double dx, double pX, int baseY, int pY,
+                                 LocusScore score, RenderContext context) {
         if (context.getScale() < 4) {
             pointsSize = 4;
         } else {
             pointsSize = 2;
         }
 
-        context.getGraphic2DForColor(graphColor).fillRect(pX, pY, dx, pointsSize);
+        fillScoreRectangle(context.getGraphic2DForColor(graphColor), pX, pY, dx, pointsSize);
 
     }
 

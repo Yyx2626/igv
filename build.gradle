@@ -46,7 +46,11 @@ def gitStatus = gitOutput(["status", "--porcelain"])
 def sourceDirty = gitStatus != null && !gitStatus.isEmpty()
 def sourceCommitBase = gitOutput(["rev-parse", "--short=9", "HEAD"]) ?: "unknown"
 def sourceCommit = sourceCommitBase + (sourceDirty && sourceCommitBase != "unknown" ? "-dirty" : "")
-def upstreamVersion = (gitOutput(["describe", "--tags", "--abbrev=0"]) ?: "custom-unversioned")
+// A release tag for this fork (for example, v3.0.0-beta.4-customize.8) must not
+// become the next build's upstream base, or "customize.8" is appended twice.
+def upstreamVersion = (gitOutput(["describe", "--tags", "--match", "v[0-9]*",
+                                  "--exclude", "*-customize.*", "--abbrev=0"])
+        ?: "custom-unversioned")
         .replaceFirst("^v", "")
 def customizationVersion = providers.gradleProperty("customizationVersion").getOrElse("0").toString()
 def displayVersion = (version.toString() == "user"

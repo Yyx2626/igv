@@ -46,12 +46,14 @@ public class SessionStatePersistenceTest {
     }
 
     @Test
-    public void flipRangeDisablesBothIndividualAndGroupAutoscaling() {
+    public void flipRangePreservesBothIndividualAndGroupAutoscaling() {
         DataSourceTrack first = track("first");
         DataSourceTrack second = track("second");
         DataRange shared = new DataRange(0, 5, 10);
         first.setDataRange(shared);
         second.setDataRange(shared);
+        first.setAutoScale(true);
+        second.setAutoScale(true);
         first.setAttributeValue(AttributeManager.GROUP_AUTOSCALE, "Group 1");
         second.setAttributeValue(AttributeManager.GROUP_AUTOSCALE, "Group 1");
 
@@ -61,8 +63,23 @@ public class SessionStatePersistenceTest {
         assertEquals(0f, first.getDataRange().getMaximum(), 0f);
         assertEquals(10f, second.getDataRange().getMinimum(), 0f);
         assertEquals(0f, second.getDataRange().getMaximum(), 0f);
-        assertEquals(null, first.getAttributeValue(AttributeManager.GROUP_AUTOSCALE));
-        assertEquals(null, second.getAttributeValue(AttributeManager.GROUP_AUTOSCALE));
+        assertTrue(first.getAutoScale());
+        assertTrue(second.getAutoScale());
+        assertEquals("Group 1", first.getAttributeValue(AttributeManager.GROUP_AUTOSCALE));
+        assertEquals("Group 1", second.getAttributeValue(AttributeManager.GROUP_AUTOSCALE));
+    }
+
+    @Test
+    public void mixedAutoscaleSelectionIsInitiallyUnchecked() {
+        DataSourceTrack enabled = track("enabled");
+        DataSourceTrack disabled = track("disabled");
+        enabled.setAutoScale(true);
+        disabled.setAutoScale(false);
+
+        javax.swing.JCheckBoxMenuItem item = (javax.swing.JCheckBoxMenuItem)
+                TrackMenuUtils.getAutoscaleItem(List.of(enabled, disabled));
+
+        assertFalse(item.isSelected());
     }
 
     @Test

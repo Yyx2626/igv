@@ -66,6 +66,16 @@ public class SnapshotUtilities {
 
 
     public static String doComponentSnapshot(Component component, File file, ImageFileTypes.Type type, boolean batch) throws IOException {
+        return doComponentSnapshot(component, file, type, batch, 1.0);
+    }
+
+    /**
+     * Export a component, rendering raster PNG output at {@code pngScale} times the logical
+     * component size. Vector formats ignore the raster scale.
+     */
+    public static String doComponentSnapshot(Component component, File file,
+                                             ImageFileTypes.Type type, boolean batch,
+                                             double pngScale) throws IOException {
 
         try {
             snapshotInProgress = true;
@@ -87,7 +97,8 @@ public class SnapshotUtilities {
             } else if (type == PNG) {
                 String format = "png";
                 String[] exts = new String[]{"." + format};
-                exportScreenShotBufferedImage((Paintable) component, file, width, height, exts, format, batch);
+                exportScreenShotBufferedImage((Paintable) component, file, width, height,
+                        exts, format, batch, Math.max(1, pngScale));
                 return "OK";
             } else {
                 final String message = "No image writer for file type: " + file
@@ -162,18 +173,25 @@ public class SnapshotUtilities {
      * @throws IOException
      */
     private static void exportScreenShotBufferedImage(Paintable target, File selectedFile, int width, int height,
-                                                      String[] allowedExts, String format, boolean batch) throws IOException {
+                                                      String[] allowedExts, String format, boolean batch,
+                                                      double scale) throws IOException {
 
-        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage image = new BufferedImage(scaledDimension(width, scale),
+                scaledDimension(height, scale), BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = image.createGraphics();
 
-        // Start with a white background
-        Color c = g.getColor();
-        g.setColor(Color.white);
-        g.fillRect(0, 0, width, height);
-        g.setColor(c);
-
-        paintImage(target, g, width, height, batch);
+        try {
+            // Paint in logical IGV coordinates while the BufferedImage stores the requested
+            // higher raster resolution. This preserves layout and increases actual detail.
+            g.scale(scale, scale);
+            Color c = g.getColor();
+            g.setColor(Color.white);
+            g.fillRect(0, 0, width, height);
+            g.setColor(c);
+            paintImage(target, g, width, height, batch);
+        } finally {
+            g.dispose();
+        }
 
         selectedFile = fixFileExt(selectedFile, allowedExts, format);
         if (selectedFile != null) {
@@ -183,6 +201,14 @@ public class SnapshotUtilities {
                 MessageUtils.showMessage("Error writing image file of type: " + format + ". Try .png or .svg");
             }
         }
+    }
+
+    private static int scaledDimension(int logicalSize, double scale) throws IOException {
+        double result = Math.ceil(logicalSize * scale);
+        if (!Double.isFinite(result) || result < 1 || result > Integer.MAX_VALUE) {
+            throw new IOException("Invalid PNG output dimension: " + result);
+        }
+        return (int) result;
     }
 
 

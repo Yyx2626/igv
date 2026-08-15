@@ -110,6 +110,7 @@ final public class Constants {
     public static final String CHART_DRAW_Y_AXIS = "CHART.DRAW_AXIS";
     public static final String CHART_DRAW_TRACK_NAME = "CHART.DRAW_TRACK_NAME";
     public static final String CHART_COLOR_TRACK_NAME = "CHART.COLOR_TRACK_NAME";
+    public static final String CHART_BAR_OVERLAP = "CHART.BAR_OVERLAP";
 
     // Track border and options.  Originally these were for chart tracks only, thus the names.
     // TRACK_DRAW_BORDERS is retained only for IGVPreferences.migrateUserPreferences()'s one-time

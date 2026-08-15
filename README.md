@@ -28,8 +28,10 @@ For the original, unmodified IGV project, visit
 ### Major customizations
 
 - **Average with error bars:** combine selected tracks into a synthetic mean
-  track with SEM, SD, or no error bars; configure missing-value handling,
-  windowing, rendering, color, cap style, and restore the original tracks.
+  track with SEM, SD, or no error bars; require a configurable minimum N before
+  drawing SD/SEM; optionally overlay individual repeats as scatter points;
+  configure missing-value handling, windowing, rendering, error-bar and
+  scatter-point appearance; and restore the original tracks.
 - **Track pairing and track groups:** pair top and bottom tracks for coordinated
   range editing, independent autoscaling, and paired Y-axis flips. Pair borders
   can be assigned their own height and color from either member's context menu
@@ -69,7 +71,12 @@ For the original, unmodified IGV project, visit
 ### Minor fixes and debugging
 
 - Made Save Screenshot remember the last accepted output path and options during
-  the current IGV run.
+  the current IGV run. PNG raster resolution can be selected from 1x through
+  8x and defaults to 2x.
+- Added a fractional **Bar overlap to hide pixel gaps** setting under
+  Preferences > Tracks (1.0 px by default). Numeric bars retain subpixel bin
+  geometry, and Average scatter points remain centered and inset within the
+  corresponding painted bars even when bins are narrower than one pixel.
 - Prefixed each TSV data column with its exported track's display order
   (`track_N.`) to keep column identities unambiguous.
 - Made fixed-bin Mean/Maximum/Minimum/Absolute Maximum values use the exact raw
@@ -93,8 +100,10 @@ For the original, unmodified IGV project, visit
   version, commit, `src/main/` SHA-256, build time, and running-JAR SHA-256.
 - Fixed duplicate loading of files dropped from macOS Finder and made divider
   drag-and-drop use the live panel position instead of stale cached state.
-- Fixed negative-only autoscaling, Y-axis and mid-line clipping, viewport and
-  track background gaps, and error bars being clipped by autoscaling.
+- Fixed negative-only autoscaling, preserved autoscaling when flipping Y axes,
+  corrected mixed multi-track Autoscale menu state, and fixed Y-axis and
+  mid-line clipping, viewport and track background gaps, and error bars being
+  clipped by autoscaling.
 - Fixed selection behavior for Shift-click, right-click, checkboxes, and mixed
   multi-track context menus.
 - Fixed JSON session restoration for local merged/average tracks, pair-group

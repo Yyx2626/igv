@@ -5,8 +5,52 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
 
 ## August 14, 2026
 
+- Extended **Average With Error Bar** with an adjustable minimum N for drawing
+  SD/SEM and an optional scatter overlay of the individual repeats in each bin.
+  Scatter points are placed reproducibly from left to right across a
+  configurable centered percentage of the mean bar width, with their complete
+  marker bounds kept inside that region. Existing Average tracks preview scatter
+  setting changes live and restore the prior appearance on Cancel. Point shape,
+  fractional-pixel size, border thickness (initially 20% of the point diameter),
+  and separate positive, negative, and inner colors are configurable; Default
+  follows the track's positive/negative colors and uses an opaque white
+  inner color. Scatter points use the same pixel transform as their Average
+  renderer so their centers remain correctly positioned relative to the mean bar.
+  Initial point diameter and border thickness are calculated
+  the first time that Average track's scatter settings are opened, using the
+  displayed bin width, scatter width, and repeat count without an additional
+  size multiplier; the resulting absolute pixel values then remain fixed.
+  Scatter settings are available
+  during Average creation and from the resulting track's context menu, remain
+  available across Bar Chart, Points, and Line Plot renderers, and persist in
+  JSON sessions.
+- Added a fractional **Bar overlap to hide pixel gaps** preference under Tracks,
+  defaulting to 1.0 logical pixel and applied consistently to ordinary numeric
+  bars and Average mean/error bars. Horizontal score geometry now remains in
+  double precision, including when the theoretical bin width is below one pixel;
+  effective overlap is capped at that width. Scatter placement is centered on
+  the painted bar and uses `painted width - 2 * overlap`, preventing markers from
+  crossing bar edges while the overlap covers rasterization seams. Integer-aligned
+  rectangles retain a direct `fillRect` fast path, while fractional rendering
+  reuses shapes rather than allocating one per bin.
 - Added vector PDF output to **Save Screenshot** alongside PNG and SVG. PDF uses
   the same coordinate, track-name, selected-track, and optional TSV settings.
+  PNG resolution is selectable from 1x through 8x, defaults to 2x, and directly
+  controls output raster dimensions without an implicit display-density multiplier.
+- Fixed local build identity after a customized release tag: the version base
+  now comes from the nearest official IGV tag, preventing `customize.8` from
+  being appended twice.
+- Removed an extra intermediate integer conversion from XY plot Y coordinates.
+  Numeric signals and guide lines now share the same owned pixel rows
+  (`y` through `y + height - 1`) and the same mapping for normal and flipped
+  tracks, so bars remain symmetric and cannot cross their own edge baseline.
+  This also makes zero-height paired borders export as one consistently weighted
+  shared mid-line instead of adjacent full- and half-width strokes. Duplicate
+  drawing of the same track baseline was removed, and rendering now honors the
+  persisted `drawBaseline` setting.
+- Fixed **Flip Y-Axis** disabling autoscale. Automatic ranges now preserve their
+  flipped direction, and a mixed multi-track selection no longer shows Autoscale
+  checked when only some selected tracks use it.
 
 ## August 13, 2026
 

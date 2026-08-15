@@ -13,15 +13,10 @@ import java.util.List;
  * like {@link BarChartRenderer} (delegated to the superclass) and the error bar (see
  * {@link AverageErrorBarPainter}), in an order that depends on the error bar's cap style.
  * <p>
- * Adjacent bins' bars/error-bars can overlap by a pixel or two at the edges (both this
- * class's mean bars and {@code AverageErrorBarPainter}'s error bars pad their width
- * slightly to avoid gaps between bins), so whichever is drawn LAST wins that overlap.
- * SINGLE cap ("T"-shape) error bars sit flush against their own mean bar's tip with no
- * intentional overlap - drawing them FIRST, then all mean bars on top, means any stray
- * error-bar pixels that bled into a neighboring bin's mean-bar rectangle get painted over
- * with solid blue, avoiding a "blue-tan-blue-tan" stripe. DOUBLE cap ("I"-beam) error bars
- * are intentionally symmetric and expected to sit on top of the mean bar, so they're
- * drawn last, as before.
+ * Mean bars and error bars share the configured bar overlap. Scatter placement is centered
+ * on that painted bar and inset by the effective overlap on both sides. SINGLE cap ("T"-shape)
+ * error bars are drawn before the mean bars; DOUBLE cap ("I"-beam) error bars are
+ * intentionally symmetric and drawn afterward.
  */
 public class AverageErrorBarRenderer extends BarChartRenderer {
 
@@ -41,5 +36,6 @@ public class AverageErrorBarRenderer extends BarChartRenderer {
             super.renderScores(track, locusScores, context, rect);
             AverageErrorBarPainter.drawErrorBars(track, locusScores, context, rect, this);
         }
+        AverageScatterPointPainter.draw(track, locusScores, context, rect, this);
     }
 }

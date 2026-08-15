@@ -1,5 +1,10 @@
 package org.igv.ui.action;
 
+import org.igv.renderer.ScatterPointStyle;
+import org.igv.prefs.Constants;
+import org.igv.prefs.PreferencesManager;
+import org.igv.track.DisplayBinPlan;
+import org.igv.track.RegionDisplayBinPlanner;
 import org.igv.track.AverageErrorBarTrack;
 import org.igv.track.DataTrack;
 import org.igv.track.ErrorBarType;
@@ -7,6 +12,8 @@ import org.igv.track.Track;
 import org.igv.track.TrackPairing;
 import org.igv.track.WindowFunction;
 import org.igv.ui.IGV;
+import org.igv.ui.panel.FrameManager;
+import org.igv.ui.panel.ReferenceFrame;
 import org.igv.ui.undo.TrackStructureEdit;
 
 import javax.swing.JOptionPane;
@@ -30,6 +37,14 @@ public class AverageErrorBarMenuAction {
 
     public static void createAverageErrorBarTrack(Collection<Track> selectedTracks, ErrorBarType errorBarType,
                                                     WindowFunction windowFunction, float naValue) {
+        createAverageErrorBarTrack(selectedTracks, errorBarType, windowFunction, naValue,
+                2, false, new ScatterPointStyle());
+    }
+
+    public static void createAverageErrorBarTrack(Collection<Track> selectedTracks, ErrorBarType errorBarType,
+                                                   WindowFunction windowFunction, float naValue,
+                                                   int minimumErrorBarN, boolean scatterPointsEnabled,
+                                                   ScatterPointStyle scatterPointStyle) {
 
         List<DataTrack> allDataTracks = new ArrayList<>();
         for (Track t : selectedTracks) {
@@ -63,6 +78,7 @@ public class AverageErrorBarMenuAction {
         AverageErrorBarTrack bottomAvg = null;
         if (!topGroup.isEmpty()) {
             topAvg = new AverageErrorBarTrack(UUID.randomUUID().toString(), "Average", topGroup, windowFunction, errorBarType, naValue);
+            configureDisplay(topAvg, minimumErrorBarN, scatterPointsEnabled, scatterPointStyle);
             RegionalTrackSettingsTransfer.TransferResult transfer =
                     RegionalTrackSettingsTransfer.inheritMatchingSettings(topGroup, topAvg, true);
             regionalSettingsChanged |= transfer.changed();
@@ -71,6 +87,7 @@ public class AverageErrorBarMenuAction {
         if (!bottomGroup.isEmpty()) {
             String name = topAvg != null ? "Average (Bottom)" : "Average";
             bottomAvg = new AverageErrorBarTrack(UUID.randomUUID().toString(), name, bottomGroup, windowFunction, errorBarType, naValue);
+            configureDisplay(bottomAvg, minimumErrorBarN, scatterPointsEnabled, scatterPointStyle);
             RegionalTrackSettingsTransfer.TransferResult transfer =
                     RegionalTrackSettingsTransfer.inheritMatchingSettings(bottomGroup, bottomAvg, true);
             regionalSettingsChanged |= transfer.changed();
@@ -96,6 +113,43 @@ public class AverageErrorBarMenuAction {
                             + "Please review the resulting Regional Settings before relying on the display.",
                     "Review Regional Settings", JOptionPane.INFORMATION_MESSAGE);
         }
+    }
+
+    private static void configureDisplay(AverageErrorBarTrack track, int minimumErrorBarN,
+                                         boolean scatterPointsEnabled,
+                                         ScatterPointStyle scatterPointStyle) {
+        track.setMinimumErrorBarN(minimumErrorBarN);
+        track.setScatterPointsEnabled(scatterPointsEnabled);
+        if (scatterPointStyle != null) {
+            track.getScatterPointStyle().copyFrom(scatterPointStyle);
+        }
+    }
+
+    /** Repeat count used to preview the shared default before paired groups are created. */
+    public static int computeDefaultRepeatCount(Collection<? extends Track> tracks) {
+        List<DataTrack> dataTracks = filterDataTracks(new ArrayList<>(tracks));
+        if (dataTracks.isEmpty()) return 1;
+        TrackPairing.Partition partition = TrackPairing.partitionTopBottom(
+                new ArrayList<>(dataTracks));
+        return Math.max(1, Math.max(partition.top.size(), partition.bottom.size()));
+    }
+
+    /** Average on-screen bin width for the current first visible locus. */
+    public static double estimateCurrentBinWidthPixels() {
+        ReferenceFrame frame = FrameManager.getFirstFrame();
+        int pixelWidth = frame == null ? 0 : frame.getWidthInPixels();
+        if (pixelWidth <= 0 && IGV.hasInstance()) {
+            pixelWidth = IGV.getInstance().getMainPanel().getDataPanelWidth();
+        }
+        if (frame == null || pixelWidth <= 0) return 1.0;
+        int start = Math.max(0, (int) Math.floor(frame.getOrigin()));
+        int end = Math.max(start + 1, (int) Math.ceil(frame.getEnd()));
+        int requestedBins = Math.max(1, PreferencesManager.getPreferences()
+                .getAsInt(Constants.SCREENSHOT_DATA_BINS));
+        DisplayBinPlan plan = RegionDisplayBinPlanner.create(
+                frame.getChrName(), start, end, requestedBins);
+        int actualBins = Math.max(1, plan.getBins().size());
+        return pixelWidth / (double) actualBins;
     }
 
     private static List<DataTrack> filterDataTracks(List<Track> tracks) {

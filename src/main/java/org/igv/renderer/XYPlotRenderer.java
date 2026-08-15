@@ -9,6 +9,8 @@ import org.igv.track.Track;
 import org.igv.ui.FontManager;
 
 import java.awt.*;
+import java.awt.geom.Line2D;
+import java.awt.geom.Rectangle2D;
 import java.text.DecimalFormat;
 import java.util.List;
 
@@ -20,10 +22,12 @@ import static org.igv.prefs.Constants.*;
 public abstract class XYPlotRenderer extends DataRenderer {
 
     static DecimalFormat formatter = new DecimalFormat();
+    private final Rectangle2D.Double reusableRectangle = new Rectangle2D.Double();
+    private final Line2D.Double reusableLine = new Line2D.Double();
 
-    protected void drawDataPoint(Color graphColor, int dx, int pX, int baseY, int pY,
+    protected void drawDataPoint(Color graphColor, double dx, double pX, int baseY, int pY,
                                  LocusScore score, RenderContext context) {
-        context.getGraphic2DForColor(graphColor).fillRect(pX, pY, dx, 2);
+        fillScoreRectangle(context.getGraphic2DForColor(graphColor), pX, pY, dx, 2);
 
     }
 
@@ -38,6 +42,7 @@ public abstract class XYPlotRenderer extends DataRenderer {
 
         double origin = context.getOrigin();
         double locScale = context.getScale();
+        if (!Double.isFinite(locScale) || locScale <= 0) return;
 
         Color posColor = context.getPositiveColor(track);
         Color negColor = context.getNegativeColor(track);
@@ -46,36 +51,17 @@ public abstract class XYPlotRenderer extends DataRenderer {
         // the base value is == min value which is == 0.
 
         DataRange dataRange = context.getDataRange(track);
-        float maxValue = dataRange.getMaximum();
         float baseValue = dataRange.getBaseline();
-        float minValue = dataRange.getMinimum();
         boolean isLog = dataRange.isLog();
-
-        if (isLog) {
-            minValue = (float) (minValue == 0 ? 0 : Math.log10(minValue));
-            maxValue = (float) Math.log10(maxValue);
-        }
-
-
-        // Calculate the Y scale factor.
-
-        double delta = (maxValue - minValue);
-        double yScaleFactor = rect.getHeight() / delta;
-
-        // Calculate the Y position in pixels of the base value.  Clip to bounds of rectangle
-        double baseDelta = maxValue - baseValue;
-        double rawBaseY = rect.getY() + baseDelta * yScaleFactor;
-        int baseY = clampYPixel(rect, rawBaseY);
+        int baseY = dataYPixel(rect, dataRange, baseValue);
+        double barOverlap = barOverlapPixels();
 
         for (LocusScore score : locusScores) {
 
-            // Note -- don't cast these to an int until the range is checked.
-            // could get an overflow.
-            double pX = ((score.getStart() - origin) / locScale);
-            double dx = Math.ceil((Math.max(1, score.getEnd() - score.getStart())) / locScale) + 1;
-            if ((pX + dx < 0)) {
+            ScorePixelSpan xSpan = scorePixelSpan(score, origin, locScale, barOverlap);
+            if ((xSpan.rawStart() + xSpan.paintWidth() < 0)) {
                 continue;
-            } else if (pX > rect.getMaxX()) {
+            } else if (xSpan.rawStart() > rect.getMaxX()) {
                 break;
             }
 
@@ -87,11 +73,11 @@ public abstract class XYPlotRenderer extends DataRenderer {
             if (!Float.isNaN(dataY)) {
 
                 // Compute the pixel y location.  Clip to bounds of rectangle.
-                double dy = isLog ? Math.log10(dataY) - baseValue : (dataY - baseValue);
-                int pY = clampYPixel(rect, rawBaseY - (int) (dy * yScaleFactor));
+                int pY = dataYPixel(rect, dataRange, dataY);
 
                 Color color = (dataY >= baseValue) ? posColor : negColor;
-                drawDataPoint(color, (int) dx, (int) pX, baseY, pY, score, context);
+                drawDataPoint(color, scorePixelWidth(xSpan), xSpan.rawStart(),
+                        baseY, pY, score, context);
 
             }
         }
@@ -190,19 +176,6 @@ public abstract class XYPlotRenderer extends DataRenderer {
 
             // midline
             DataRange axisDefinition = context.getDataRange(track);
-            float maxValue = axisDefinition.getMaximum();
-            float baseValue = axisDefinition.getBaseline();
-            float minValue = axisDefinition.getMinimum();
-
-            double maxX = arect.getMaxX();
-            double x = arect.getX();
-            double y = arect.getY();
-
-            if ((baseValue > minValue) && (baseValue < maxValue)) {
-                int baseY = computeYPixelValue(arect, axisDefinition, baseValue);
-
-                getBaselineGraphics(context, axisDefinition).drawLine((int) x, baseY, (int) maxX, baseY);
-            }
 
             // Default to lightGray, not the track's own color: matching-color mid lines are
             // easy to mistake for actual data (especially since a track's altColor commonly
@@ -214,10 +187,14 @@ public abstract class XYPlotRenderer extends DataRenderer {
                     : DataRange.DEFAULT_MIDLINE_COLOR;
             Graphics2D borderGraphics = context.getGraphic2DForColor(borderColor);
 
-            // Draw the baseline -- todo, this is a wig track option?
-            double zeroValue = axisDefinition.getBaseline();
-            int zeroY = computeYPixelValue(arect, axisDefinition, zeroValue);
-            borderGraphics.drawLine(arect.x, zeroY, arect.x + arect.width, zeroY);
+            if (axisDefinition.isDrawBaseline()) {
+                double zeroValue = axisDefinition.getBaseline();
+                int zeroY = computeYPixelValue(arect, axisDefinition, zeroValue);
+                // A one-row fill follows the same half-open pixel convention as the bars.
+                // drawLine is stroke-centered and can cover a different Retina device row at
+                // a component edge, which makes a bar appear to cross its own baseline.
+                borderGraphics.fillRect(arect.x, zeroY, arect.width, 1);
+            }
 
             // Optionally draw "Y" line  (UCSC track line option)
             if (track.isDrawYLine()) {
@@ -230,18 +207,6 @@ public abstract class XYPlotRenderer extends DataRenderer {
     }
 
     /**
-     * Get a graphics object for the baseline.
-     * TODO -- make the line style settable by the user
-     *
-     * @param context
-     * @return
-     */
-    private static Graphics2D getBaselineGraphics(RenderContext context, DataRange axisDefinition) {
-        Color color = axisDefinition.getMidlineColor() != null ? axisDefinition.getMidlineColor() : DataRange.DEFAULT_MIDLINE_COLOR;
-        return (Graphics2D) context.getGraphic2DForColor(color).create();
-    }
-
-    /**
      * Method description
      *
      * @return
@@ -251,33 +216,117 @@ public abstract class XYPlotRenderer extends DataRenderer {
     }
 
     protected int computeYPixelValue(Rectangle drawingRect, DataRange axisDefinition, double dataY) {
-
-        double maxValue = axisDefinition.getMaximum();
-        double minValue = axisDefinition.getMinimum();
-
-        double yScaleFactor = drawingRect.getHeight() / (maxValue - minValue);
-
-        // Compute the pixel y location.  Clip to bounds of rectangle.
-        // The distince in pixels frmo the data value to the axis maximum
-        double delta = (maxValue - dataY) * yScaleFactor;
-        double pY = drawingRect.getY() + delta;
-
-        // getMaxY() is y+height - one past the last actually-paintable row (rows are y..y+height-1,
-        // since AWT/Java2D clip rectangles are half-open). Clamping to getMaxY() itself lands
-        // exactly on that excluded row, so a value at/near the data range's max (e.g. the "Mid"
-        // guide line when set at a track's own bottom edge) gets computed but never actually
-        // painted - looks identical to being clipped away.
-        return clampYPixel(drawingRect, pY);
+        return dataYPixel(drawingRect, axisDefinition, dataY);
     }
 
     /**
-     * Clamp to actual paintable rows.  AWT rectangles are half-open: y + height is outside the
-     * rectangle.  Keeping bars and guide lines on this same boundary is especially important for
-     * SVG, where a filled rectangle ending at y + height would visibly extend past the baseline.
+     * Horizontal bin geometry shared by the signal and scatter painters. {@code ownedWidth}
+     * is the true interval from the score's start to end. {@code paintWidth} adds the
+     * user-configurable right-side overlap used to cover rasterization seams between bars.
+     */
+    static ScorePixelSpan scorePixelSpan(LocusScore score, double origin, double scale) {
+        return scorePixelSpan(score, origin, scale, barOverlapPixels());
+    }
+
+    static ScorePixelSpan scorePixelSpan(LocusScore score, double origin, double scale,
+                                         double barOverlap) {
+        double rawStart = (score.getStart() - origin) / scale;
+        double ownedWidth = Math.max(1.0, score.getEnd() - score.getStart()) / scale;
+        double effectiveOverlap = Math.min(Math.max(0, barOverlap), ownedWidth);
+        return new ScorePixelSpan(rawStart, ownedWidth, effectiveOverlap);
+    }
+
+    record ScorePixelSpan(double rawStart, double ownedWidth, double overlapWidth) {
+        double paintWidth() {
+            return ownedWidth + overlapWidth;
+        }
+
+        double scatterUsableWidth() {
+            return Math.max(0, ownedWidth - overlapWidth());
+        }
+
+        double scatterUsableLeft() {
+            double paintedCenter = rawStart + paintWidth() / 2.0;
+            return paintedCenter - scatterUsableWidth() / 2.0;
+        }
+    }
+
+    protected double scorePixelWidth(ScorePixelSpan span) {
+        return span.paintWidth();
+    }
+
+    static double barOverlapPixels() {
+        double configured = PreferencesManager.getPreferences().getAsFloat(CHART_BAR_OVERLAP);
+        return Double.isFinite(configured) ? Math.max(0, configured) : 0;
+    }
+
+    /** Fill a logical-pixel rectangle without allocating a Shape for every score. */
+    protected final void fillScoreRectangle(Graphics2D graphics, double x, double y,
+                                            double width, double height) {
+        if (isIntegerPixel(x) && isIntegerPixel(y)
+                && isIntegerPixel(width) && isIntegerPixel(height)) {
+            graphics.fillRect((int) x, (int) y, (int) width, (int) height);
+        } else {
+            reusableRectangle.setRect(x, y, width, height);
+            graphics.fill(reusableRectangle);
+        }
+    }
+
+    /** Draw a logical-pixel line without allocating a Shape for every error-bar segment. */
+    protected final void drawScoreLine(Graphics2D graphics, double x1, double y1,
+                                       double x2, double y2) {
+        if (isIntegerPixel(x1) && isIntegerPixel(y1)
+                && isIntegerPixel(x2) && isIntegerPixel(y2)) {
+            graphics.drawLine((int) x1, (int) y1, (int) x2, (int) y2);
+        } else {
+            reusableLine.setLine(x1, y1, x2, y2);
+            graphics.draw(reusableLine);
+        }
+    }
+
+    private static boolean isIntegerPixel(double value) {
+        return value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE
+                && value == Math.rint(value);
+    }
+
+    /** Map a value to a pixel row relative to the same mapped baseline used by all guides. */
+    static int dataYPixel(Rectangle drawingRect, DataRange axisDefinition, double dataY) {
+
+        double maxValue = axisDefinition.getMaximum();
+        double minValue = axisDefinition.getMinimum();
+        double baseValue = axisDefinition.getBaseline();
+
+        if (axisDefinition.isLog()) {
+            minValue = minValue == 0 ? 0 : Math.log10(minValue);
+            maxValue = Math.log10(maxValue);
+            // Preserve IGV's existing log-axis convention that a zero baseline remains at
+            // numeric zero while positive data values are transformed.
+            if (Double.compare(dataY, baseValue) != 0) {
+                dataY = Math.log10(dataY);
+            }
+        }
+
+        double yScaleFactor = Math.max(0, drawingRect.getHeight() - 1) /
+                (maxValue - minValue);
+        int baselineY = clampYPixel(drawingRect,
+                drawingRect.getY() + (maxValue - baseValue) * yScaleFactor);
+        double signedDistance = (dataY - baseValue) * yScaleFactor;
+        int pixelDistance = (int) Math.round(Math.abs(signedDistance));
+        int pixelY = signedDistance < 0
+                ? baselineY + pixelDistance
+                : baselineY - pixelDistance;
+        return clampYPixel(drawingRect, pixelY);
+    }
+
+    /**
+     * Clamp every numeric renderer to the same set of paintable pixel rows. A rectangle of
+     * height {@code h} owns rows {@code y} through {@code y + h - 1}; the next row belongs to
+     * the next component. Data values and guides both use this conversion.
      */
     static int clampYPixel(Rectangle drawingRect, double pixelY) {
         if (drawingRect.height <= 0) return drawingRect.y;
-        return (int) Math.max(drawingRect.getMinY(),
+        double clamped = Math.max(drawingRect.getMinY(),
                 Math.min(drawingRect.getMaxY() - 1, pixelY));
+        return drawingRect.y + (int) Math.rint(clamped - drawingRect.y);
     }
 }

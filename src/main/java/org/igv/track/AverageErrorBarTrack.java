@@ -9,9 +9,12 @@ import org.igv.renderer.AverageErrorBarPointsRenderer;
 import org.igv.renderer.AverageErrorBarRenderer;
 import org.igv.renderer.DataRange;
 import org.igv.renderer.ErrorBarStyle;
+import org.igv.renderer.ScatterPointStyle;
 import org.igv.renderer.XYPlotRenderer;
 import org.igv.ui.ErrorBarStyleDialog;
 import org.igv.ui.IGV;
+import org.igv.ui.ScatterPointStyleDialog;
+import org.igv.ui.action.AverageErrorBarMenuAction;
 import org.igv.ui.action.RegionalTrackSettingsTransfer;
 import org.igv.ui.undo.TrackStructureEdit;
 import org.igv.ui.panel.ReferenceFrame;
@@ -33,7 +36,7 @@ import java.util.Objects;
 /**
  * Synthetic track produced by the "Average With Error Bar" context-menu action:
  * renders the per-bin mean across its member tracks plus a configurable SD/SEM error
- * bar (see {@link AverageErrorBarDataSource} for the per-bin math and
+ * bar and optional member-value scatter points (see {@link AverageErrorBarDataSource} for the per-bin math and
  * {@link AverageErrorBarRenderer} for the drawing).
  * <p>
  * Modeled on {@link CombinedDataTrack} (wraps a custom {@code DataSource}) plus
@@ -47,6 +50,9 @@ public class AverageErrorBarTrack extends DataSourceTrack {
     private ErrorBarType errorBarType = ErrorBarType.SEM;
     private ErrorBarStyle errorBarStyle = new ErrorBarStyle();
     private float naValue = 0f;
+    private int minimumErrorBarN = 2;
+    private boolean scatterPointsEnabled;
+    private ScatterPointStyle scatterPointStyle = new ScatterPointStyle();
 
     /** Special constructor for session unmarshalling - mirrors {@code CombinedDataTrack}. */
     public AverageErrorBarTrack(String id, String name) {
@@ -149,6 +155,31 @@ public class AverageErrorBarTrack extends DataSourceTrack {
         }
     }
 
+    public int getMinimumErrorBarN() {
+        return minimumErrorBarN;
+    }
+
+    public void setMinimumErrorBarN(int minimumErrorBarN) {
+        this.minimumErrorBarN = Math.max(1, minimumErrorBarN);
+    }
+
+    public boolean isScatterPointsEnabled() {
+        return scatterPointsEnabled;
+    }
+
+    public void setScatterPointsEnabled(boolean scatterPointsEnabled) {
+        this.scatterPointsEnabled = scatterPointsEnabled;
+    }
+
+    public ScatterPointStyle getScatterPointStyle() {
+        return scatterPointStyle;
+    }
+
+    public void setScatterPointStyle(ScatterPointStyle scatterPointStyle) {
+        this.scatterPointStyle = scatterPointStyle == null
+                ? new ScatterPointStyle() : scatterPointStyle;
+    }
+
     @Override
     public List<Component> getPopupMenuItems(TrackClickEvent te) {
         List<Component> items = new ArrayList<>(super.getPopupMenuItems(te));
@@ -199,6 +230,34 @@ public class AverageErrorBarTrack extends DataSourceTrack {
             }
         });
         items.add(styleItem);
+
+        JMenuItem scatterSettingsItem = new JMenuItem("Scatter Points Settings...");
+        scatterSettingsItem.addActionListener(e -> {
+            scatterPointStyle.initializeDefaultsForFirstSettingsOpen(
+                    AverageErrorBarMenuAction.estimateCurrentBinWidthPixels(),
+                    memberTracks.size());
+            boolean originalEnabled = scatterPointsEnabled;
+            ScatterPointStyle originalStyle = scatterPointStyle.copy();
+            ScatterPointStyleDialog dlg = new ScatterPointStyleDialog(
+                    IGV.getInstance().getMainFrame(), scatterPointsEnabled,
+                    scatterPointStyle, getColor(), getAltColor(),
+                    (enabled, previewStyle) -> {
+                        scatterPointsEnabled = enabled;
+                        scatterPointStyle.copyFrom(previewStyle);
+                        IGV.getInstance().repaint(List.of(this));
+                    },
+                    () -> {
+                        scatterPointsEnabled = originalEnabled;
+                        scatterPointStyle.copyFrom(originalStyle);
+                        IGV.getInstance().repaint(List.of(this));
+                    });
+            dlg.setVisible(true);
+            if (!dlg.isCanceled()) {
+                scatterPointsEnabled = dlg.isScatterPointsEnabled();
+                IGV.getInstance().repaint(List.of(this));
+            }
+        });
+        items.add(scatterSettingsItem);
 
         items.add(new JPopupMenu.Separator());
         JMenuItem restoreItem = new JMenuItem("Restore Original Tracks");
@@ -279,7 +338,7 @@ public class AverageErrorBarTrack extends DataSourceTrack {
             float err = 0;
             if (errorBarType != ErrorBarType.NONE && score instanceof AverageErrorLocusScore) {
                 AverageErrorLocusScore es = (AverageErrorLocusScore) score;
-                if (es.getN() >= 2) {
+                if (es.getN() >= minimumErrorBarN) {
                     float e = errorBarType == ErrorBarType.SD ? es.getSd() : es.getSem();
                     if (!Float.isNaN(e)) {
                         err = e;
@@ -289,6 +348,17 @@ public class AverageErrorBarTrack extends DataSourceTrack {
             float[] span = errorBarStyle.dataSpan(baseline, value, err);
             min = Math.min(min, span[0]);
             max = Math.max(max, span[1]);
+            if (scatterPointsEnabled && score instanceof AverageErrorLocusScore) {
+                float[] memberValues = ((AverageErrorLocusScore) score).getMemberValues();
+                if (memberValues != null) {
+                    for (float memberValue : memberValues) {
+                        if (!Float.isNaN(memberValue)) {
+                            min = Math.min(min, memberValue);
+                            max = Math.max(max, memberValue);
+                        }
+                    }
+                }
+            }
         }
         return min > max ? null : new Range(min, max);
     }
@@ -322,7 +392,7 @@ public class AverageErrorBarTrack extends DataSourceTrack {
         if (score instanceof AverageErrorLocusScore) {
             AverageErrorLocusScore es = (AverageErrorLocusScore) score;
             buf.append(String.format("Value: average %g", es.getScore()));
-            if (errorBarType != ErrorBarType.NONE && es.getN() >= 2) {
+            if (errorBarType != ErrorBarType.NONE && es.getN() >= minimumErrorBarN) {
                 float err = errorBarType == ErrorBarType.SD ? es.getSd() : es.getSem();
                 if (!Float.isNaN(err)) {
                     buf.append(String.format(" ± %g (%s)", err, errorBarType));
@@ -341,7 +411,10 @@ public class AverageErrorBarTrack extends DataSourceTrack {
         super.marshalJSON(json);
         json.put("errorBarType", errorBarType.toString());
         json.put("naValue", naValue);
+        json.put("minimumErrorBarN", minimumErrorBarN);
+        json.put("scatterPointsEnabled", scatterPointsEnabled);
         errorBarStyle.marshalJSON(json);
+        scatterPointStyle.marshalJSON(json);
         if (dataSource instanceof AverageErrorBarDataSource) {
             json.put("windowFunction", ((AverageErrorBarDataSource) dataSource).getResolvedFunction().toString());
         }
@@ -378,7 +451,10 @@ public class AverageErrorBarTrack extends DataSourceTrack {
         if (jsonObject.has("naValue")) {
             this.naValue = (float) jsonObject.getDouble("naValue");
         }
+        this.minimumErrorBarN = Math.max(1, jsonObject.optInt("minimumErrorBarN", 2));
+        this.scatterPointsEnabled = jsonObject.optBoolean("scatterPointsEnabled", false);
         this.errorBarStyle = ErrorBarStyle.fromJSON(jsonObject);
+        this.scatterPointStyle = ScatterPointStyle.fromJSON(jsonObject);
 
         // super.unmarshalJSON already restored a stock renderer (Heatmap/DynSeq) via the
         // generic "graphType" field, if that's what was saved. Our own custom render

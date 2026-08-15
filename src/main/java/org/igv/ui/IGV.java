@@ -1167,7 +1167,8 @@ public class IGV implements IGVEventObserver {
             contentPane.getStatusBar().setMessage("Exporting screenshot...");
             ScreenshotView view = new ScreenshotView(getMainPanel(), options.includeCoordinates(),
                     options.includeTrackNames(), includedTracks);
-            String result = SnapshotUtilities.doComponentSnapshot(view, options.imageFile(), options.format(), false);
+            String result = SnapshotUtilities.doComponentSnapshot(view, options.imageFile(),
+                    options.format(), false, options.pngRasterScale());
             if (!"OK".equals(result)) throw new IOException(result);
             if (options.outputDataTsv()) {
                 int bins = Math.max(1, PreferencesManager.getPreferences().getAsInt(Constants.SCREENSHOT_DATA_BINS));

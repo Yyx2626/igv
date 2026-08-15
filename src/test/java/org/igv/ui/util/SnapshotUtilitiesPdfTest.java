@@ -4,6 +4,8 @@ import org.igv.ui.panel.Paintable;
 import org.junit.Test;
 
 import javax.swing.JComponent;
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
@@ -49,5 +51,35 @@ public class SnapshotUtilitiesPdfTest {
         byte[] header = Files.readAllBytes(pdf);
         assertTrue(new String(header, 0, Math.min(header.length, 8), StandardCharsets.US_ASCII)
                 .startsWith("%PDF-"));
+    }
+
+    @Test
+    public void exportsPngAtRequestedRasterScale() throws Exception {
+        Path directory = Files.createTempDirectory("igv-png-scale-test");
+        File requested = directory.resolve("snapshot").toFile();
+        VectorFixture fixture = new VectorFixture();
+        fixture.setSize(200, 100);
+
+        assertEquals("OK", SnapshotUtilities.doComponentSnapshot(
+                fixture, requested, ImageFileTypes.Type.PNG, false, 2));
+
+        BufferedImage image = ImageIO.read(directory.resolve("snapshot.png").toFile());
+        assertEquals(400, image.getWidth());
+        assertEquals(200, image.getHeight());
+    }
+
+    @Test
+    public void supportsFractionalDisplayRasterScale() throws Exception {
+        Path directory = Files.createTempDirectory("igv-png-fractional-scale-test");
+        File requested = directory.resolve("snapshot").toFile();
+        VectorFixture fixture = new VectorFixture();
+        fixture.setSize(200, 100);
+
+        assertEquals("OK", SnapshotUtilities.doComponentSnapshot(
+                fixture, requested, ImageFileTypes.Type.PNG, false, 1.5));
+
+        BufferedImage image = ImageIO.read(directory.resolve("snapshot.png").toFile());
+        assertEquals(300, image.getWidth());
+        assertEquals(150, image.getHeight());
     }
 }

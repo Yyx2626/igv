@@ -30,6 +30,7 @@ import org.igv.ui.FontManager;
 import org.igv.ui.HeatmapScaleDialog;
 import org.igv.ui.IGV;
 import org.igv.ui.PairedDataRangeDialog;
+import org.igv.ui.ScatterPointStyleDialog;
 import org.igv.ui.action.AverageErrorBarMenuAction;
 import org.igv.ui.action.OverlayTracksMenuAction;
 import org.igv.ui.action.RegionalTrackSettingsTransfer;
@@ -146,11 +147,20 @@ public class TrackMenuUtils {
                         JMenuItem averageItem = new JMenuItem("Average With Error Bar...");
                         averageItem.addActionListener(e -> {
                             WindowFunction defaultFn = AverageErrorBarMenuAction.computeDefaultWindowFunction(dataTracksInSelection);
-                            AverageErrorBarOptionsDialog dlg = new AverageErrorBarOptionsDialog(IGV.getInstance().getMainFrame(), defaultFn);
+                            DataTrack firstDataTrack = dataTrackList.get(0);
+                            ScatterPointStyle defaultScatterStyle = new ScatterPointStyle();
+                            AverageErrorBarOptionsDialog dlg = new AverageErrorBarOptionsDialog(
+                                    IGV.getInstance().getMainFrame(), defaultFn,
+                                    firstDataTrack.getColor(), firstDataTrack.getAltColor(),
+                                    defaultScatterStyle,
+                                    AverageErrorBarMenuAction.computeDefaultRepeatCount(
+                                            dataTracksInSelection));
                             dlg.setVisible(true);
                             if (!dlg.isCanceled()) {
                                 AverageErrorBarMenuAction.createAverageErrorBarTrack(dataTracksInSelection,
-                                        dlg.getErrorBarType(), dlg.getWindowFunction(), dlg.getNaValue());
+                                        dlg.getErrorBarType(), dlg.getWindowFunction(), dlg.getNaValue(),
+                                        dlg.getMinimumErrorBarN(), dlg.isScatterPointsEnabled(),
+                                        dlg.getScatterPointStyle());
                             }
                         });
                         multiMenu.add(averageItem);
@@ -601,6 +611,50 @@ public class TrackMenuUtils {
             }
         });
         items.add(styleItem);
+
+        JMenuItem scatterSettingsItem = new JMenuItem("Scatter Points Settings...");
+        scatterSettingsItem.addActionListener(e -> {
+            AverageErrorBarTrack first = avgTracks.get(0);
+            first.getScatterPointStyle().initializeDefaultsForFirstSettingsOpen(
+                    AverageErrorBarMenuAction.estimateCurrentBinWidthPixels(),
+                    first.getMemberTracks().size());
+            boolean allScatterEnabled = avgTracks.stream()
+                    .allMatch(AverageErrorBarTrack::isScatterPointsEnabled);
+            List<Boolean> originalEnabled = avgTracks.stream()
+                    .map(AverageErrorBarTrack::isScatterPointsEnabled)
+                    .collect(Collectors.toList());
+            List<ScatterPointStyle> originalStyles = avgTracks.stream()
+                    .map(t -> t.getScatterPointStyle().copy())
+                    .collect(Collectors.toList());
+            ScatterPointStyleDialog dlg = new ScatterPointStyleDialog(
+                    IGV.getInstance().getMainFrame(), allScatterEnabled,
+                    first.getScatterPointStyle(), first.getColor(), first.getAltColor(),
+                    (enabled, previewStyle) -> {
+                        avgTracks.forEach(t -> {
+                            t.setScatterPointsEnabled(enabled);
+                            t.getScatterPointStyle().copyFrom(previewStyle);
+                        });
+                        IGV.getInstance().repaint(new ArrayList<Track>(avgTracks));
+                    },
+                    () -> {
+                        for (int i = 0; i < avgTracks.size(); i++) {
+                            avgTracks.get(i).setScatterPointsEnabled(originalEnabled.get(i));
+                            avgTracks.get(i).getScatterPointStyle().copyFrom(
+                                    originalStyles.get(i));
+                        }
+                        IGV.getInstance().repaint(new ArrayList<Track>(avgTracks));
+                    });
+            dlg.setVisible(true);
+            if (!dlg.isCanceled()) {
+                avgTracks.forEach(t -> t.setScatterPointsEnabled(dlg.isScatterPointsEnabled()));
+                for (int i = 1; i < avgTracks.size(); i++) {
+                    avgTracks.get(i).getScatterPointStyle().copyFrom(
+                            avgTracks.get(0).getScatterPointStyle());
+                }
+                IGV.getInstance().repaint(new ArrayList<Track>(avgTracks));
+            }
+        });
+        items.add(scatterSettingsItem);
 
         items.add(new JPopupMenu.Separator());
         JMenuItem restoreItem = new JMenuItem(avgTracks.size() > 1 ? "Restore Original Tracks (each)" : "Restore Original Tracks");
@@ -1362,10 +1416,10 @@ public class TrackMenuUtils {
     }
 
     private static boolean checkAutoscale(Collection<Track> selectedTracks) {
-        boolean autoScale = false;
+        boolean autoScale = !selectedTracks.isEmpty();
         for (Track t : selectedTracks) {
-            if (t.getAutoScale()) {
-                autoScale = true;
+            if (!t.getAutoScale()) {
+                autoScale = false;
                 break;
             }
         }

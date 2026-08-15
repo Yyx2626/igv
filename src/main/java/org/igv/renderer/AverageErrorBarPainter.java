@@ -30,7 +30,7 @@ final class AverageErrorBarPainter {
 
     /**
      * Draw a per-bin error-bar marker (bar or T/I-beam line, per {@code ErrorBarStyle})
-     * for every bin with at least 2 contributing members. Used by Bar and Points modes.
+     * for every bin meeting the track's configured minimum N. Used by Bar and Points modes.
      */
     static void drawErrorBars(Track track, List<LocusScore> locusScores, RenderContext context,
                                Rectangle rect, XYPlotRenderer renderer) {
@@ -45,9 +45,11 @@ final class AverageErrorBarPainter {
         DataRange dataRange = context.getDataRange(track);
         double origin = context.getOrigin();
         double locScale = context.getScale();
+        if (!Double.isFinite(locScale) || locScale <= 0) return;
+        double barOverlap = XYPlotRenderer.barOverlapPixels();
 
         for (LocusScore score : locusScores) {
-            AverageErrorLocusScore es = errorScoreOf(score);
+            AverageErrorLocusScore es = errorScoreOf(score, errTrack.getMinimumErrorBarN());
             if (es == null) {
                 continue;
             }
@@ -57,24 +59,23 @@ final class AverageErrorBarPainter {
                 continue;
             }
 
-            double pX = (score.getStart() - origin) / locScale;
-            double dx = Math.ceil(Math.max(1, score.getEnd() - score.getStart()) / locScale) + 1;
-            if (pX + dx < 0) {
+            XYPlotRenderer.ScorePixelSpan xSpan =
+                    XYPlotRenderer.scorePixelSpan(score, origin, locScale, barOverlap);
+            double dx = renderer.scorePixelWidth(xSpan);
+            if (xSpan.rawStart() + dx < 0) {
                 continue;
-            } else if (pX > rect.getMaxX()) {
+            } else if (xSpan.rawStart() > rect.getMaxX()) {
                 break;
             }
 
-            // Use the exact same baseY-then-delta pixel formula BarChartRenderer/
-            // XYPlotRenderer.renderScores() uses for the mean bar itself (not the
-            // single-rounding computeYPixelValue()) - otherwise the two round slightly
-            // differently and a 1px white gap can appear between the mean bar's top edge
-            // and the error bar sitting flush against it.
+            // Use the exact same continuous-coordinate formula as
+            // XYPlotRenderer.renderScores(), with one final pixel conversion.
             int[] span = errorPixelSpan(dataY -> barModeYPixel(rect, dataRange, (float) dataY),
                     dataRange.getBaseline(), mean, err, style);
 
             Color color = errorBarColor(track, style, mean, dataRange, context);
-            drawOne(context, color, (int) pX, (int) dx, span[0], span[1], span[2] == 1, style);
+            drawOne(context, color, xSpan.rawStart(), dx,
+                    span[0], span[1], span[2] == 1, style, renderer);
         }
     }
 
@@ -101,7 +102,7 @@ final class AverageErrorBarPainter {
         List<int[]> segments = new ArrayList<>(); // {x, yHi, yLo}
 
         for (LocusScore score : locusScores) {
-            AverageErrorLocusScore es = errorScoreOf(score);
+            AverageErrorLocusScore es = errorScoreOf(score, errTrack.getMinimumErrorBarN());
             if (es == null) {
                 continue;
             }
@@ -175,46 +176,21 @@ final class AverageErrorBarPainter {
     }
 
     /**
-     * Replicates {@code XYPlotRenderer.renderScores()}'s exact pixel-y formula for the
-     * mean bar's own top/bottom edge (used by both Bar and Points render modes, since
-     * {@code PointsRenderer} doesn't override {@code renderScores}): {@code baseY} is
-     * rounded to an {@code int} first, then the data-to-baseline delta is rounded and
-     * subtracted from it - two separate roundings, unlike {@code computeYPixelValue}'s
-     * single rounding of the whole expression. Using {@code computeYPixelValue} here
-     * instead can be off by a pixel from where the mean bar's edge actually lands,
-     * leaving a thin white gap between the mean bar and an error bar drawn flush against it.
+     * Replicates {@code XYPlotRenderer.renderScores()}'s pixel-y formula for the mean
+     * bar's own top/bottom edge (used by both Bar and Points render modes, since
+     * {@code PointsRenderer} doesn't override {@code renderScores}). The calculation stays
+     * continuous until {@link XYPlotRenderer#clampYPixel} performs the sole conversion to
+     * the shared integer plot coordinate. The full data range maps onto the rectangle's actual
+     * rows ({@code y} through {@code y + height - 1}), exactly as in XYPlotRenderer.
      */
     static int barModeYPixel(Rectangle rect, DataRange dataRange, float dataY) {
-        float maxValue = dataRange.getMaximum();
-        float baseValue = dataRange.getBaseline();
-        float minValue = dataRange.getMinimum();
-        boolean isLog = dataRange.isLog();
-        if (isLog) {
-            minValue = (float) (minValue == 0 ? 0 : Math.log10(minValue));
-            maxValue = (float) Math.log10(maxValue);
-        }
-        double yScaleFactor = rect.getHeight() / (double) (maxValue - minValue);
-        double baseDelta = maxValue - baseValue;
-        // Keep this the *unclamped* double, exactly like XYPlotRenderer.renderScores()'s
-        // rawBaseY: renderScores() subtracts the rounded delta from the unclamped rawBaseY and
-        // only clamps the final result, it never clamps baseY itself before subtracting. Doing
-        // that clamp here first (as an earlier version of this method did) shifts the reference
-        // point by up to a pixel whenever clamping actually triggers - e.g. at the baseline of a
-        // non-negative track, where rawBaseY sits exactly one row past the last paintable pixel -
-        // which then throws every other dataY computed from it (including the mean's own pixel
-        // position, used below to keep a SINGLE-cap error bar flush against its mean bar) a pixel
-        // off from where XYPlotRenderer/BarChartRenderer actually draw them.
-        double rawBaseY = rect.getY() + baseDelta * yScaleFactor;
-
-        double dy = isLog ? Math.log10(dataY) - baseValue : (dataY - baseValue);
-        int pY = (int) (rawBaseY - (int) (dy * yScaleFactor));
-        return XYPlotRenderer.clampYPixel(rect, pY);
+        return XYPlotRenderer.dataYPixel(rect, dataRange, dataY);
     }
 
-    private static AverageErrorLocusScore errorScoreOf(LocusScore score) {
+    private static AverageErrorLocusScore errorScoreOf(LocusScore score, int minimumN) {
         if (score instanceof AverageErrorLocusScore) {
             AverageErrorLocusScore es = (AverageErrorLocusScore) score;
-            return es.getN() >= 2 ? es : null;
+            return es.getN() >= minimumN ? es : null;
         }
         return null;
     }
@@ -229,8 +205,9 @@ final class AverageErrorBarPainter {
         return base != null ? base.darker() : ErrorBarStyle.DEFAULT_COLOR;
     }
 
-    private static void drawOne(RenderContext context, Color color, int pX, int dx, int top, int bottom,
-                                 boolean outwardAtTop, ErrorBarStyle style) {
+    private static void drawOne(RenderContext context, Color color, double pX, double dx,
+                                int top, int bottom, boolean outwardAtTop,
+                                ErrorBarStyle style, XYPlotRenderer renderer) {
         if (bottom <= top) {
             // The error span rounds to less than a single pixel at this scale (typically a
             // low-signal bin on a track whose dynamic range is set by much taller peaks
@@ -241,28 +218,28 @@ final class AverageErrorBarPainter {
             return;
         }
         Graphics2D g = context.getGraphic2DForColor(color);
-        int centerX = pX + dx / 2;
+        double centerX = pX + dx / 2;
         int height = bottom - top;
 
         if (style.getShape() == ErrorBarStyle.Shape.BAR) {
-            int barWidth = Math.max(1, (int) Math.round(dx * style.getBarWidthPercent() / 100.0));
-            int barX = centerX - barWidth / 2;
-            g.fillRect(barX, top, barWidth, height);
+            double barWidth = dx * style.getBarWidthPercent() / 100.0;
+            double barX = centerX - barWidth / 2;
+            renderer.fillScoreRectangle(g, barX, top, barWidth, height);
         } else {
             Stroke oldStroke = g.getStroke();
             g.setStroke(new BasicStroke(Math.max(1, style.getLineWidthPx())));
-            g.drawLine(centerX, top, centerX, bottom);
-            int capHalf = Math.max(2, dx / 4);
+            renderer.drawScoreLine(g, centerX, top, centerX, bottom);
+            double capHalf = Math.max(2, dx / 4);
             if (style.getCapStyle() == ErrorBarStyle.CapStyle.DOUBLE) {
                 // "I"-beam: cap at both ends.
-                g.drawLine(centerX - capHalf, top, centerX + capHalf, top);
-                g.drawLine(centerX - capHalf, bottom, centerX + capHalf, bottom);
+                renderer.drawScoreLine(g, centerX - capHalf, top, centerX + capHalf, top);
+                renderer.drawScoreLine(g, centerX - capHalf, bottom, centerX + capHalf, bottom);
             } else {
                 // "T"-shape: cap only at the outward tip (away from the mean), whichever end
                 // that is - for a below-baseline mean the outward tip is the bottom end, not
                 // the top.
                 int capY = outwardAtTop ? top : bottom;
-                g.drawLine(centerX - capHalf, capY, centerX + capHalf, capY);
+                renderer.drawScoreLine(g, centerX - capHalf, capY, centerX + capHalf, capY);
             }
             g.setStroke(oldStroke);
         }

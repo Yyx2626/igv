@@ -23,5 +23,6 @@ public class AverageErrorBarLineplotRenderer extends LineplotRenderer {
     public synchronized void renderScores(Track track, List<LocusScore> locusScores, RenderContext context, Rectangle rect) {
         AverageErrorBarPainter.drawErrorBand(track, locusScores, context, rect, this);
         super.renderScores(track, locusScores, context, rect);
+        AverageScatterPointPainter.draw(track, locusScores, context, rect, this);
     }
 }

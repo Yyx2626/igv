@@ -232,10 +232,9 @@ public class TrackPairing {
         for (Track track : targets) {
             DataRange range = track.getDataRange();
             if (range != null) {
-                track.setAutoScale(false);
-                // Group autoscaling takes precedence over getAutoScale() and would replace
-                // the flipped range during the next repaint unless explicitly removed.
-                track.removeAttribute(AttributeManager.GROUP_AUTOSCALE);
+                // Axis direction is independent of how the numeric limits are obtained.
+                // Autoscaler preserves this orientation when it replaces the limits, so
+                // neither individual nor group autoscaling needs to be disabled here.
                 track.setDataRange(range.flipped());
             }
         }

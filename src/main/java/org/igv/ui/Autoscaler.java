@@ -70,23 +70,28 @@ public class Autoscaler {
             Range inter = computeScale(inViewRanges);
             for (Track track : trackList) {
                 DataRange dr = track.getDataRange();
-                // Clamp both ends to include 0: a positive-only track's min defaults to 0
-                // (not its smallest positive value), and symmetrically a negative-only
-                // track's max defaults to 0 (not its largest, i.e. least-negative, value).
-                // For a mixed-sign track this is a no-op (inter.min<0 and inter.max>0 already).
-                float min = Math.min(0, inter.min);
-                float max = Math.max(0, inter.max);
-                float base = min < 0 ? 0 : min;
-                // Pathological case where min ~= max  (no data in view)
-                if (max - min <= (2 * Float.MIN_VALUE)) {
-                    max = min + 1;
-                }
-
-                DataRange newDR = new DataRange(min, base, max, dr.isDrawBaseline());
-                newDR.setType(dr.getType());
-                track.setDataRange(newDR);
+                track.setDataRange(autoscaledDataRange(dr, inter.min, inter.max));
             }
         }
+    }
+
+    static DataRange autoscaledDataRange(DataRange current, float observedMin,
+                                         float observedMax) {
+        // Clamp both ends to include 0: a positive-only track's min defaults to 0
+        // (not its smallest positive value), and symmetrically a negative-only
+        // track's max defaults to 0 (not its largest, i.e. least-negative, value).
+        float min = Math.min(0, observedMin);
+        float max = Math.max(0, observedMax);
+        float base = min < 0 ? 0 : min;
+        if (max - min <= (2 * Float.MIN_VALUE)) {
+            max = min + 1;
+        }
+
+        boolean flipped = current.getMinimum() > current.getMaximum();
+        DataRange result = new DataRange(min, base, max, current.isDrawBaseline());
+        result.setType(current.getType());
+        result.setMidlineColor(current.getMidlineColor());
+        return flipped ? result.flipped() : result;
     }
 
     public static Range computeScale(List<Range> ranges) {
