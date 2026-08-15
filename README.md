@@ -28,10 +28,9 @@ For the original, unmodified IGV project, visit
 ### Major customizations
 
 - **Average with error bars:** combine selected tracks into a synthetic mean
-  track with SEM, SD, or no error bars; require a configurable minimum N before
-  drawing SD/SEM; optionally overlay individual repeats as scatter points;
-  configure missing-value handling, windowing, rendering, error-bar and
-  scatter-point appearance; and restore the original tracks.
+  track with SEM, SD, or no error bars; optionally overlay individual repeats
+  as scatter points; configure missing-value handling, windowing, rendering,
+  error-bar and scatter-point appearance; and restore the original tracks.
 - **Track pairing and track groups:** pair top and bottom tracks for coordinated
   range editing, independent autoscaling, and paired Y-axis flips. Pair borders
   can be assigned their own height and color from either member's context menu
@@ -70,6 +69,7 @@ For the original, unmodified IGV project, visit
 
 ### Minor fixes and debugging
 
+- Added a configurable minimum N required before Average tracks draw SD/SEM.
 - Made Save Screenshot remember the last accepted output path and options during
   the current IGV run. PNG raster resolution can be selected from 1x through
   8x and defaults to 2x.
