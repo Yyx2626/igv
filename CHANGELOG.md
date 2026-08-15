@@ -26,7 +26,8 @@ not duplicate routine changes made by the upstream `igvteam/igv` project.
   JSON sessions.
 - Added a fractional **Bar overlap to hide pixel gaps** preference under Tracks,
   defaulting to 1.0 logical pixel and applied consistently to ordinary numeric
-  bars and Average mean/error bars. Horizontal score geometry now remains in
+  bars and Average mean/error bars. Its textbox is aligned with the other Track
+  settings. Horizontal score geometry now remains in
   double precision, including when the theoretical bin width is below one pixel;
   effective overlap is capped at that width. Scatter placement is centered on
   the painted bar and uses `painted width - 2 * overlap`, preventing markers from

@@ -37,12 +37,12 @@ TRACK.BACKGROUND_COLOR	Track background color	color	250,250,250
 TRACK.BORDER_HEIGHT	Height of borders between tracks (pixels)	integer	5
 TRACK.BORDER_COLOR	Border color	color	250,250,250
 TRACK_ATTRIBUTE_NAME_KEY	Sample attribute key for track names	string	null
+CHART.BAR_OVERLAP	Bar overlap to hide pixel gaps (pixels)	float	1.0
 
 ##Numeric Tracks
 CHART.DRAW_TRACK_NAME	Draw track label	boolean	FALSE
 CHART.DRAW_AXIS	Label Y axis	boolean	FALSE
 CHART.SHOW_DATA_RANGE	Show data range	boolean	TRUE
-CHART.BAR_OVERLAP	Bar overlap to hide pixel gaps (pixels)	float	1.0
 
 ##Feature Tracks
 EXPAND_FEATURE_TRACKS	Expand feature tracks	boolean	FALSE
